@@ -26,6 +26,7 @@ import static org.wildfly.extension.undertow.UndertowRootDefinition.HTTP_INVOKER
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.function.Supplier;
 
 import io.undertow.server.handlers.PathHandler;
 import org.jboss.as.controller.AbstractAddStepHandler;
@@ -45,7 +46,6 @@ import org.jboss.as.controller.operations.validation.StringLengthValidator;
 import org.jboss.as.domain.management.SecurityRealm;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
-import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceName;
 import org.wildfly.security.auth.server.HttpAuthenticationFactory;
 
@@ -62,7 +62,7 @@ public class HttpInvokerDefinition extends PersistentResourceDefinition {
                         .addRequirements(Capabilities.CAPABILITY_HTTP_INVOKER)
                         .build();
 
-    static final SimpleAttributeDefinition HTTP_AUTHENTICATION_FACTORY = new SimpleAttributeDefinitionBuilder(Constants.HTTP_AUTHENITCATION_FACTORY, ModelType.STRING, true)
+    static final SimpleAttributeDefinition HTTP_AUTHENTICATION_FACTORY = new SimpleAttributeDefinitionBuilder(Constants.HTTP_AUTHENTICATION_FACTORY, ModelType.STRING, true)
             .setValidator(new StringLengthValidator(1, true))
             .setRestartAllServices()
             .setCapabilityReference(Capabilities.REF_HTTP_AUTHENTICATION_FACTORY)
@@ -75,7 +75,7 @@ public class HttpInvokerDefinition extends PersistentResourceDefinition {
             .setRestartAllServices()
             .setValidator(new StringLengthValidator(1, Integer.MAX_VALUE, true, false))
             .addAccessConstraint(SensitiveTargetAccessConstraintDefinition.SECURITY_REALM_REF)
-            .setAlternatives(Constants.HTTP_AUTHENITCATION_FACTORY)
+            .setAlternatives(Constants.HTTP_AUTHENTICATION_FACTORY)
             .build();
 
     protected static final SimpleAttributeDefinition PATH = new SimpleAttributeDefinitionBuilder(Constants.PATH, ModelType.STRING, true)
@@ -123,39 +123,33 @@ public class HttpInvokerDefinition extends PersistentResourceDefinition {
             final ModelNode securityRealm = SECURITY_REALM.resolveModelAttribute(context, model);
             if (authFactory.isDefined()) {
                 httpAuthenticationFactory = authFactory.asString();
-            } else if(securityRealm.isDefined()) {
+            } else if (securityRealm.isDefined()) {
                 securityRealmString = securityRealm.asString();
             }
 
-            final HttpInvokerHostService service = new HttpInvokerHostService(path);
             final String serverName = serverAddress.getLastElement().getValue();
             final String hostName = hostAddress.getLastElement().getValue();
 
-            final CapabilityServiceBuilder<?> builder = context.getCapabilityServiceTarget()
-                    .addCapability(HTTP_INVOKER_HOST_CAPABILITY)
-                    .setInstance(service)
-                    .addCapabilityRequirement(HTTP_INVOKER_RUNTIME_CAPABILITY.getName(), PathHandler.class, service.getRemoteHttpInvokerServiceInjectedValue())
-                    .addCapabilityRequirement(Capabilities.CAPABILITY_HOST, Host.class, service.getHost(), serverName, hostName)
-                    ;
-
+            final CapabilityServiceBuilder<?> sb = context.getCapabilityServiceTarget().addCapability(HTTP_INVOKER_HOST_CAPABILITY);
+            final Supplier<Host> hSupplier = sb.requiresCapability(Capabilities.CAPABILITY_HOST, Host.class, serverName, hostName);
+            Supplier<HttpAuthenticationFactory> hafSupplier = null;
+            Supplier<SecurityRealm> srSupplier = null;
+            final Supplier<PathHandler> phSupplier = sb.requiresCapability(HTTP_INVOKER_RUNTIME_CAPABILITY.getName(), PathHandler.class);
             if (httpAuthenticationFactory != null) {
-                builder.addCapabilityRequirement(Capabilities.REF_HTTP_AUTHENTICATION_FACTORY, HttpAuthenticationFactory.class, service.getHttpAuthenticationFactoryInjectedValue(), httpAuthenticationFactory);
-            } else  if(securityRealmString != null) {
+                hafSupplier = sb.requiresCapability(Capabilities.REF_HTTP_AUTHENTICATION_FACTORY, HttpAuthenticationFactory.class, httpAuthenticationFactory);
+            } else if (securityRealmString != null) {
                 final ServiceName realmServiceName = SecurityRealm.ServiceUtil.createServiceName(securityRealmString);
-                builder.addDependency(realmServiceName, SecurityRealm.class, service.getRealmService());
+                srSupplier = sb.requires(realmServiceName);
             }
-
-            builder.setInitialMode(ServiceController.Mode.ACTIVE)
-                    .install();
+            sb.setInstance(new HttpInvokerHostService(hSupplier, hafSupplier, srSupplier, phSupplier, path));
+            sb.install();
         }
     }
 
     private static final class HttpInvokerRemove extends ServiceRemoveStepHandler {
-
         HttpInvokerRemove() {
             super(new HttpInvokerAdd());
         }
-
 
         @Override
         protected ServiceName serviceName(String name, PathAddress address) {

@@ -21,11 +21,16 @@
  */
 package org.wildfly.clustering.web.hotrod.session;
 
-import org.infinispan.client.hotrod.RemoteCache;
-import org.wildfly.clustering.marshalling.spi.Marshallability;
+import org.wildfly.clustering.web.session.DistributableSessionManagementConfiguration;
 import org.wildfly.clustering.web.session.SessionManagerFactoryConfiguration;
 
-public interface HotRodSessionManagerFactoryConfiguration<C extends Marshallability, L> extends HotRodSessionManagementConfiguration, SessionManagerFactoryConfiguration<C, L> {
-
-    <K, V> RemoteCache<K, V> getCache();
+/**
+ * @param <S> the HttpSession specification type
+ * @param <SC> the ServletContext specification type
+ * @param <AL> the HttpSessionAttributeListener specification type
+ * @param <MC> the marshalling context type
+ * @param <LC> the local context type
+ * @author Paul Ferraro
+ */
+public interface HotRodSessionManagerFactoryConfiguration<S, SC, AL, MC, LC> extends DistributableSessionManagementConfiguration, SessionManagerFactoryConfiguration<S, SC, AL, MC, LC>, HotRodSessionMetaDataFactoryConfiguration {
 }

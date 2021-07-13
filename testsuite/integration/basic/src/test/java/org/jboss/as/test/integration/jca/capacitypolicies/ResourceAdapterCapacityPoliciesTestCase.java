@@ -75,7 +75,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 /**
- * Integration test for JCA capacity policies JBJCA-986 using resource adapter
+ * Integration test for Jakarta Connectors capacity policies JBJCA-986 using resource adapter
  * *
  *
  * @author <a href="mailto:msimka@redhat.com">Martin Simka</a>
@@ -125,7 +125,7 @@ public class ResourceAdapterCapacityPoliciesTestCase extends JcaMgmtBase {
                 TimeoutUtil.class);
 
         rar.addAsManifestResource(new StringAsset("Dependencies: javax.inject.api,org.jboss.as.connector," +
-                "org.jboss.as.controller,org.jboss.dmr,org.jboss.as.cli,org.jboss.staxmapper," +
+                "org.jboss.as.controller,org.jboss.dmr,org.jboss.staxmapper," +
                 "org.jboss.ironjacamar.impl, org.jboss.ironjacamar.jdbcadapters,org.jboss.remoting\n"), "MANIFEST.MF");
         rar.addAsManifestResource(createPermissionsXmlAsset(
                 new RemotingPermission("createEndpoint"),

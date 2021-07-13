@@ -33,7 +33,7 @@ import java.util.Arrays;
 import java.util.Collection;
 
 /**
- * Defines attributes and operations for the JSF Subsystem
+ * Defines attributes and operations for the Jakarta Server Faces Subsystem
  *
  * @author Stan Silvert ssilvert@redhat.com (C) 2012 Red Hat Inc.
  */
@@ -43,7 +43,7 @@ public class JSFResourceDefinition extends PersistentResourceDefinition {
     public static final String DISALLOW_DOCTYPE_DECL_ATTR_NAME = "disallow-doctype-decl";
     public static final String DEFAULT_SLOT = "main";
 
-    public static JSFResourceDefinition INSTANCE = new JSFResourceDefinition();
+    public static final JSFResourceDefinition INSTANCE = new JSFResourceDefinition();
 
     protected static final SimpleAttributeDefinition DEFAULT_JSF_IMPL_SLOT =
             new SimpleAttributeDefinitionBuilder(DEFAULT_SLOT_ATTR_NAME, ModelType.STRING, true)

@@ -11,7 +11,7 @@
         Maintain separation between the artifact id and the version to help prevent
         merge conflicts between commits changing the GA and those changing the V.
         -->
-        <version>18.0.0.Beta1-SNAPSHOT</version>
+        <version>25.0.0.Beta1-SNAPSHOT</version>
     </parent>
 
     <artifactId>wildfly-ts-integ</artifactId>
@@ -45,7 +45,6 @@
         <xslt.scripts.dir>${jbossas.ts.integ.dir}/src/test/xslt</xslt.scripts.dir>
 
         <ts.skipTests>${skipTests}</ts.skipTests>
-        <enforcer.skip>true</enforcer.skip>
 
         <ts.elytron.cli>../../shared/enable-elytron.cli</ts.elytron.cli>
         <wildfly.dir>${project.build.directory}/wildfly</wildfly.dir>
@@ -62,6 +61,7 @@
                 <module>web</module>
                 <module>smoke</module>
                 <module>basic</module>
+                <module>microprofile</module>
                 <module>microprofile-tck</module>
                 <module>vdx</module>
                 <module>iiop</module>
@@ -87,6 +87,7 @@
                 <module>web</module>
                 <module>smoke</module>
                 <module>basic</module>
+                <module>microprofile</module>
                 <module>microprofile-tck</module>
                 <module>vdx</module>
                 <module>clustering</module>
@@ -214,6 +215,32 @@
             </modules>
         </profile>
 
+        <!-- -Dts.layers -->
+        <profile>
+            <id>ts.integ.group.layers</id>
+            <activation><property><name>ts.layers</name></property></activation>
+            <modules>
+                <module>basic</module>
+                <module>elytron</module>
+                <module>microprofile</module>
+                <module>microprofile-tck</module>
+                <module>clustering</module>
+                <module>ws</module>
+            </modules>
+        </profile>
+
+        <!-- -Dts.standalone.microprofile -->
+        <profile>
+            <id>ts.integ.group.standalone.microprofile</id>
+            <activation><property><name>ts.standalone.microprofile</name></property></activation>
+            <modules>
+                <module>basic</module>
+                <module>microprofile</module>
+                <module>microprofile-tck</module>
+                <module>clustering</module>
+            </modules>
+        </profile>
+
         <!-- -Dts.legacy -->
         <profile>
             <id>ts.integ.group.legacy</id>
@@ -229,6 +256,16 @@
             <activation><property><name>ts.legacy.ejb.client</name></property></activation>
             <modules>
                 <module>legacy-ejb-client</module>
+            </modules>
+        </profile>
+
+        <!-- -Dts.microprofile -->
+        <profile>
+            <id>ts.integ.group.microprofile</id>
+            <activation><property><name>ts.microprofile</name></property></activation>
+            <modules>
+                <module>microprofile</module>
+                <module>microprofile-tck</module>
             </modules>
         </profile>
 
@@ -252,6 +289,10 @@
                     <exists>${ts.elytron.cli}</exists>
                 </file>
             </activation>
+            <properties>
+                <!-- Re-enable the default surefire execution -->
+                <surefire.default-test.phase>test</surefire.default-test.phase>
+            </properties>
             <build>
                 <plugins>
                     <plugin>
@@ -284,11 +325,76 @@
             </build>
         </profile>
 
+        <!-- Test against bootable jar -->
+        <profile>
+            <id>bootablejar.profile</id>
+            <activation>
+                <property>
+                    <name>ts.bootable</name>
+                </property>
+            </activation>
+            <properties>
+                <!-- Re-enable the default surefire execution -->
+                <surefire.default-test.phase>test</surefire.default-test.phase>
+            </properties>
+            <modules>
+                <module>basic</module>
+                <module>clustering</module>
+                <module>elytron</module>
+                <module>microprofile</module>
+                <module>microprofile-tck</module>
+            </modules>
+        </profile>
+        <profile>
+            <id>bootablejar.ee9.profile</id>
+            <activation>
+                <property>
+                    <name>ts.bootable.ee9</name>
+                </property>
+            </activation>
+            <properties>
+                <!-- Re-enable the default surefire execution -->
+                <surefire.default-test.phase>test</surefire.default-test.phase>
+            </properties>
+            <modules>
+                <module>basic</module>
+                <module>clustering</module>
+                <module>microprofile</module>
+                <module>microprofile-tck</module>
+            </modules>
+        </profile>
+
+        <!-- Test against the EE 9 feature pack -->
+        <profile>
+            <id>ee9.test.profile</id>
+            <activation>
+                <property>
+                    <name>ts.ee9</name>
+                </property>
+            </activation>
+            <modules>
+                <module>basic</module>
+                <module>ws</module>
+                <module>clustering</module>
+                <module>microprofile</module>
+                <module>microprofile-tck</module>
+            </modules>
+        </profile>
+
     </profiles>
 
 
     <build>
         <plugins>
+            <plugin>
+                <!-- This enforcer.skip property was set to true in the properties. However this doesn't work if the
+                     property is passed on the command line. Therefore we need to explicitly skip it.
+                -->
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
             <!-- General plugin configuration for all integration tests -->
 
             <!-- Resources plugin. -->
@@ -409,11 +515,6 @@
             <groupId>${project.groupId}</groupId>
             <artifactId>wildfly-testsuite-shared</artifactId>
         </dependency>
-
-      <!--  <dependency>
-            <groupId>org.jboss.arquillian.testenricher</groupId>
-            <artifactId>arquillian-testenricher-initialcontext</artifactId>
-        </dependency>-->
         <dependency>
             <groupId>org.wildfly.arquillian</groupId>
             <artifactId>wildfly-arquillian-container-managed</artifactId>
@@ -434,18 +535,8 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.eclipse.microprofile.opentracing</groupId>
-            <artifactId>microprofile-opentracing-api</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>org.jboss.shrinkwrap</groupId>
             <artifactId>shrinkwrap-impl-base</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.opentracing.contrib</groupId>
-            <artifactId>opentracing-tracerresolver</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -453,14 +544,10 @@
             <artifactId>resteasy-client</artifactId>
             <scope>test</scope>
         </dependency>
+
         <dependency>
-            <groupId>io.smallrye</groupId>
-            <artifactId>smallrye-opentracing</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>javax.enterprise</groupId>
-            <artifactId>cdi-api</artifactId>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
             <scope>test</scope>
         </dependency>
 

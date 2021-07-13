@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Red Hat, Inc.
+ * Copyright 2020 Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import org.jboss.as.controller.transform.description.TransformationDescriptionBu
 import static org.jboss.as.txn.subsystem.TransactionExtension.CURRENT_MODEL_VERSION;
 import static org.jboss.as.txn.subsystem.TransactionSubsystemRootResourceDefinition.MAXIMUM_TIMEOUT;
 import static org.jboss.as.txn.subsystem.TransactionSubsystemRootResourceDefinition.OBJECT_STORE_RELATIVE_TO;
+import static org.jboss.as.txn.subsystem.TransactionSubsystemRootResourceDefinition.STALE_TRANSACTION_TIME;
 
 /**
  * @author Emmanuel Hugonnet (c) 2017 Red Hat, inc.
@@ -38,6 +39,9 @@ public class TransactionTransformers implements ExtensionTransformerRegistration
     static final ModelVersion MODEL_VERSION_EAP64 = ModelVersion.create(1, 5);
     static final ModelVersion MODEL_VERSION_EAP70 = ModelVersion.create(3, 0);
     static final ModelVersion MODEL_VERSION_EAP71 = ModelVersion.create(4, 0);
+    static final ModelVersion MODEL_VERSION_EAP72 = ModelVersion.create(5, 0);
+    static final ModelVersion MODEL_VERSION_EAP73 = ModelVersion.create(5, 1);
+    static final ModelVersion MODEL_VERSION_5_2_0 = ModelVersion.create(5, 2);
 
 
     @Override
@@ -48,10 +52,26 @@ public class TransactionTransformers implements ExtensionTransformerRegistration
     @Override
     public void registerTransformers(SubsystemTransformerRegistration subsystemRegistration) {
         ChainedTransformationDescriptionBuilder chainedBuilder = TransformationDescriptionBuilder.Factory.createChainedSubystemInstance(CURRENT_MODEL_VERSION);
+
+        // 6.0.0 --> 5.2.0
+        ResourceTransformationDescriptionBuilder builder52 = chainedBuilder.createBuilder(CURRENT_MODEL_VERSION, MODEL_VERSION_5_2_0);
+        builder52.getAttributeBuilder()
+                .setDiscard(DiscardAttributeChecker.DEFAULT_VALUE, STALE_TRANSACTION_TIME)
+                .addRejectCheck(RejectAttributeChecker.DEFINED, STALE_TRANSACTION_TIME)
+                .end();
+
+        // 5.2.0 --> 5.1.0
+        // CMR resources adds/removes requires restart of JVM
+        chainedBuilder.createBuilder(MODEL_VERSION_5_2_0, MODEL_VERSION_EAP73);
+
+        // 5.1.0 --> 5.0.0
+        ResourceTransformationDescriptionBuilder builderEap72 = chainedBuilder.createBuilder(MODEL_VERSION_EAP73, MODEL_VERSION_EAP72);
+        builderEap72.getAttributeBuilder().end(); // node-id attribute requires restart of JVM instead of reload
+
         // 5.0.0 --> 4.0.0
-        ResourceTransformationDescriptionBuilder builderEap71 = chainedBuilder.createBuilder(CURRENT_MODEL_VERSION, MODEL_VERSION_EAP71);
+        ResourceTransformationDescriptionBuilder builderEap71 = chainedBuilder.createBuilder(MODEL_VERSION_EAP72, MODEL_VERSION_EAP71);
         builderEap71.getAttributeBuilder()
-                .setDiscard(new DiscardAttributeChecker.DiscardAttributeValueChecker(MAXIMUM_TIMEOUT.getDefaultValue()), MAXIMUM_TIMEOUT)
+                .setDiscard(DiscardAttributeChecker.DEFAULT_VALUE, MAXIMUM_TIMEOUT)
                 .addRejectCheck(RejectAttributeChecker.DEFINED, MAXIMUM_TIMEOUT)
                 .end();
 
@@ -65,7 +85,7 @@ public class TransactionTransformers implements ExtensionTransformerRegistration
 
         ResourceTransformationDescriptionBuilder builderEap70 = chainedBuilder.createBuilder(MODEL_VERSION_EAP71, MODEL_VERSION_EAP70);
         builderEap70.getAttributeBuilder()
-                .setValueConverter(new AttributeConverter.DefaultValueAttributeConverter(OBJECT_STORE_RELATIVE_TO), OBJECT_STORE_RELATIVE_TO)
+                .setValueConverter(AttributeConverter.DEFAULT_VALUE, OBJECT_STORE_RELATIVE_TO)
                 .end();
 
         builderEap70.addChildResource(TransactionExtension.LOG_STORE_PATH)
@@ -95,7 +115,9 @@ public class TransactionTransformers implements ExtensionTransformerRegistration
                 MODEL_VERSION_EAP64,
                 MODEL_VERSION_EAP70,
                 MODEL_VERSION_EAP71,
-                // v4_1_0
+                MODEL_VERSION_EAP72,
+                MODEL_VERSION_EAP73,
+                MODEL_VERSION_5_2_0
         });
     }
 }

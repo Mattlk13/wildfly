@@ -110,6 +110,7 @@ import org.jboss.as.controller.descriptions.ModelDescriptionConstants;
 import org.jboss.as.controller.parsing.ParseUtils;
 import org.jboss.as.controller.persistence.SubsystemMarshallingContext;
 import org.jboss.dmr.ModelNode;
+import org.jboss.dmr.ModelType;
 import org.jboss.dmr.Property;
 import org.jboss.jca.common.api.metadata.common.Capacity;
 import org.jboss.jca.common.api.metadata.common.Pool;
@@ -175,7 +176,7 @@ public final class ResourceAdapterSubsystemParser implements XMLStreamConstants,
         TRANSACTION_SUPPORT.marshallAsElement(ra, streamWriter);
         writeNewConfigProperties(streamWriter, ra);
         TransactionSupportEnum transactionSupport = ra.hasDefined(TRANSACTION_SUPPORT.getName()) ? TransactionSupportEnum
-            .valueOf(ra.get(TRANSACTION_SUPPORT.getName()).asString()) : null;
+            .valueOf(ra.get(TRANSACTION_SUPPORT.getName()).resolve().asString()) : null;
         boolean isXa = false;
         if (transactionSupport == TransactionSupportEnum.XATransaction) {
             isXa = true;
@@ -259,7 +260,15 @@ public final class ResourceAdapterSubsystemParser implements XMLStreamConstants,
 
         writer.writeStartElement(localName);
         writer.writeAttribute("name", name);
-        writer.writeCharacters(value);
+        // TODO if WFCORE-4625 goes in, use the util method.
+        if (value.indexOf('\n') > -1) {
+            // Multiline content. Use the overloaded variant that staxmapper will format
+            writer.writeCharacters(value);
+        } else {
+            // Staxmapper will just output the chars without adding newlines if this is used
+            char[] chars = value.toCharArray();
+            writer.writeCharacters(chars, 0, chars.length);
+        }
         writer.writeEndElement();
 
     }
@@ -365,7 +374,7 @@ public final class ResourceAdapterSubsystemParser implements XMLStreamConstants,
                 || conDef.hasDefined(SECURITY_DOMAIN_AND_APPLICATION.getName())
                 || conDef.hasDefined(ELYTRON_ENABLED.getName())) {
             streamWriter.writeStartElement(ConnectionDefinition.Tag.SECURITY.getLocalName());
-            if (conDef.hasDefined(APPLICATION.getName()) && conDef.get(APPLICATION.getName()).asBoolean()) {
+            if (conDef.hasDefined(APPLICATION.getName()) && conDef.get(APPLICATION.getName()).getType().equals(ModelType.BOOLEAN) && conDef.get(APPLICATION.getName()).asBoolean()) {
                 streamWriter.writeEmptyElement(APPLICATION.getXmlName());
             } else {
                 APPLICATION.marshallAsElement(conDef, streamWriter);
@@ -461,7 +470,8 @@ public final class ResourceAdapterSubsystemParser implements XMLStreamConstants,
                 case RESOURCEADAPTERS_2_0:
                 case RESOURCEADAPTERS_3_0:
                 case RESOURCEADAPTERS_4_0:
-                case RESOURCEADAPTERS_5_0:{
+                case RESOURCEADAPTERS_5_0:
+                case RESOURCEADAPTERS_6_0:{
                     localName = reader.getLocalName();
                     final Element element = Element.forName(reader.getLocalName());
                     SUBSYSTEM_RA_LOGGER.tracef("%s -> %s", localName, element);

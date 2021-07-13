@@ -31,15 +31,15 @@ import org.jboss.arquillian.test.api.ArquillianResource;
 import org.jboss.as.cli.CommandContext;
 import org.jboss.as.cli.CommandLineException;
 import org.jboss.as.controller.client.ModelControllerClient;
-import org.jboss.as.controller.operations.common.Util;
 import org.jboss.as.network.NetworkUtils;
 import org.jboss.as.test.integration.management.util.CLIOpResult;
 import org.jboss.as.test.integration.management.util.CLITestUtil;
-import org.jboss.as.test.integration.management.util.ServerReload;
 import org.jboss.as.test.integration.ws.authentication.policy.resources.EchoService;
 import org.jboss.as.test.integration.ws.authentication.policy.resources.EchoServiceRemote;
 import org.jboss.as.test.integration.ws.authentication.policy.resources.PicketLinkSTSService;
+import org.jboss.as.test.shared.ServerReload;
 import org.jboss.as.test.shared.TestSuiteEnvironment;
+import org.jboss.as.test.shared.util.AssumeTestGroupUtil;
 import org.jboss.dmr.ModelNode;
 import org.jboss.logging.Logger;
 import org.jboss.shrinkwrap.api.Archive;
@@ -63,6 +63,7 @@ import org.w3c.dom.Element;
 import javax.xml.namespace.QName;
 import javax.xml.ws.BindingProvider;
 import javax.xml.ws.Service;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -127,7 +128,7 @@ public class AuthenticationPolicyContextTestCase {
         war.addAsManifestResource(AuthenticationPolicyContextTestCase.class.getPackage(), "resources/META-INF/jboss-deployment-structure.xml", "jboss-deployment-structure.xml");
         war.addAsManifestResource(AuthenticationPolicyContextTestCase.class.getPackage(), "resources/META-INF/jboss-webservices.xml", "jboss-webservices.xml");
         war.addAsManifestResource(createPermissionsXmlAsset(
-                new SecurityPermission("getPolicy"),
+                new SecurityPermission("setPolicy"),
                 new RuntimePermission("org.jboss.security.getSecurityContext")
         ), "permissions.xml");
         return war;
@@ -149,7 +150,7 @@ public class AuthenticationPolicyContextTestCase {
         war.addAsManifestResource(AuthenticationPolicyContextTestCase.class.getPackage(), "resources/META-INF/jboss-webservices.xml", "jboss-webservices.xml");
         war.addAsResource(AuthenticationPolicyContextTestCase.class.getPackage(), "dummmy-ws-handler.xml", "org/jboss/as/test/integration/ws/authentication/policy/resources/dummmy-ws-handler.xml");
         war.addAsManifestResource(createPermissionsXmlAsset(
-                new SecurityPermission("getPolicy"),
+                new SecurityPermission("setPolicy"),
                 new RuntimePermission("org.jboss.security.getSecurityContext")
         ), "permissions.xml");
         return war;
@@ -188,6 +189,10 @@ public class AuthenticationPolicyContextTestCase {
 
     @BeforeClass
     public static void initClient() throws Exception {
+        // With JDK 13 and Bouncycastle 1.65 various picketlink tests interact incorrectly
+        // such that execution of this test results in subsequent tests failing.
+        AssumeTestGroupUtil.assumeJDKVersionBefore(13);
+
         wsClient = new WSTrustClient("PicketLinkSTS", "PicketLinkSTSPort",
                 getHttpUrl(DEFAULT_HOST, DEFAULT_PORT) + "picketlink-sts/PicketLinkSTS", new WSTrustClient.SecurityInfo(USERNAME, PASSWORD));
     }
@@ -292,8 +297,7 @@ public class AuthenticationPolicyContextTestCase {
     }
 
     private void reload() {
-        ModelNode operation = Util.createOperation("reload", null);
-        ServerReload.executeReloadAndWaitForCompletion(modelControllerClient, operation, (int) SECONDS.toMillis(90), HOST,
+        ServerReload.executeReloadAndWaitForCompletion(modelControllerClient, (int) SECONDS.toMillis(90), false, HOST,
                 getManagementPort());
     }
 

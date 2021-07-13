@@ -2,7 +2,7 @@
 = Class Loading in WildFly
 
 
-Since JBoss AS 7, Class loading is considerably different to previous
+Since JBoss AS 7, Class loading is considerably different from previous
 versions of JBoss AS. Class loading is based on the
 <<Class_Loading_in_WildFly,MODULES>> project. Instead of the more familiar
 hierarchical class loading environment, WildFly's class loading is based
@@ -28,10 +28,10 @@ of how to add an explicit module dependency are explained below.
 Even though in WildFly modules are isolated by default, as part of the
 deployment process some dependencies on modules defined by the
 application server are set up for you automatically. For instance, if
-you are deploying a Java EE application a dependency on the Java EE
+you are deploying a Jakarta EE application a dependency on the Java EE
 API's will be added to your module automatically. Similarly if your
 module contains a beans.xml file a dependency on
-http://seamframework.org/Weld[Weld]will be added automatically, along
+http://seamframework.org/Weld[Weld] will be added automatically, along
 with any supporting modules that weld needs to operate.
 
 For a complete list of the automatic dependencies that are added, please
@@ -53,7 +53,7 @@ situation from occurring.
 In order of highest priority to lowest priority
 
 1.  System Dependencies - These are dependencies that are added to the
-module automatically by the container, including the Java EE api's.
+module automatically by the container, including the Jakarta EE api's.
 2.  User Dependencies - These are dependencies that are added through
 `jboss-deployment-structure.xml` or through the `Dependencies:` manifest
 entry.
@@ -115,7 +115,7 @@ vice-versa).
 
 The ear-subdeployments-isolated element value has no effect on the
 isolated classloader of the .war file(s). i.e. irrespective of whether
-this flag is set to true or false, the .war within a .ear will have a
+this flag is set to true or false, the .war within a .ear will have an
 isolated classloader and other sub-deployments within that .ear will not
 be able to access classes from that .war. This is as per spec.
 
@@ -128,7 +128,7 @@ Portability
 
 [TIP]
 
-The Java EE specification says that portable applications should not
+The Jakarta EE specification says that portable applications should not
 rely on sub deployments having access to other sub deployments unless an
 explicit Class-Path entry is set in the MANIFEST.MF. So portable
 applications should always use Class-Path entry to explicitly state
@@ -161,7 +161,7 @@ module that depends on this module will also get access to the
 dependency.
 * `services` By default items in META-INF of a dependency are not
 accessible, this makes items from `META-INF/services` accessible so
-http://download.oracle.com/javase/6/docs/api/java/util/ServiceLoader.html[services]in
+http://download.oracle.com/javase/6/docs/api/java/util/ServiceLoader.html[services] in
 the modules can be loaded.
 * `optional` If this is specified the deployment will not fail if the
 module is not available.
@@ -256,6 +256,11 @@ following XML:
 ----
 
 Note that the `slot` field is optional and defaults to `main`.
+
+[[global-directory]]
+== Global Directory
+
+The EE subsystem allows the configuration of a global directory, which represents a directory tree scanned automatically to include .jar files and resources as a single additional dependency. This dependency is added as a system dependency to all deployed application. See link:Admin_Guide{outfilesuffix}#global-directory[Subsystem EE Global Directory] to get more information about how to set up a global directory.
 
 [[jboss-deployment-structure-file]]
 == JBoss Deployment Structure File
@@ -454,7 +459,7 @@ deployment.
 [[how-to-list-the-module-dependencies-of-a-deployed-application]]
 == How to list the module dependencies of a deployed application
 
-In Wildfly it is possible to list the module dependencies added by the container to your deployed application. This task can be achieved via the command line interface, where specific operations are available to list the module dependencies for deployments and ear-subdeployments.
+In WildFly it is possible to list the module dependencies added by the container to your deployed application. This task can be achieved via the command line interface, where specific operations are available to list the module dependencies for deployments and ear-subdeployments.
 
 You can list the module dependencies of a deployment using the _list-modules_ operation as below:
 
@@ -470,7 +475,7 @@ In case of ear-subdeployments, the _list-modules_ operation is also available un
 [standalone@localhost:9990 /] /deployment=test-application.ear/subdeployment=test-application.war:list-modules
 ----
 
-If you are running Wildfly in domain mode, this operation is available via the server resource at the host level:
+If you are running WildFly in domain mode, this operation is available via the server resource at the host level:
 
 [source,options="nowrap"]
 ----

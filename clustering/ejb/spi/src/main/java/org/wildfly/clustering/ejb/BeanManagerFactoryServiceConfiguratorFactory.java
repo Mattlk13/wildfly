@@ -21,8 +21,6 @@
  */
 package org.wildfly.clustering.ejb;
 
-import java.util.Collection;
-
 import org.jboss.as.clustering.controller.CapabilityServiceConfigurator;
 import org.jboss.msc.service.ServiceName;
 
@@ -32,10 +30,10 @@ public interface BeanManagerFactoryServiceConfiguratorFactory {
      * Installs dependencies for a deployment unit
      * @param name the service name of the deployment unit
      */
-    Collection<CapabilityServiceConfigurator> getDeploymentServiceConfigurators(ServiceName name);
+    Iterable<CapabilityServiceConfigurator> getDeploymentServiceConfigurators(ServiceName name);
 
     /**
-     * Builds a bean manager factory for an EJB within a deployment.
+     * Builds a bean manager factory for an Jakarta Enterprise Beans within a deployment.
      * @param context the bean context
      * @return a service builder
      */

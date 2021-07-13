@@ -32,12 +32,12 @@
         Maintain separation between the artifact id and the version to help prevent
         merge conflicts between commits changing the GA and those changing the V.
     -->
-    <version>18.0.0.Beta1-SNAPSHOT</version>
+    <version>25.0.0.Beta1-SNAPSHOT</version>
   </parent>
 
   <artifactId>wildfly-spec-api</artifactId>
-  <name>WildFly: Exported Java EE Specification APIs</name>
-  <description>Java EE Specification APIs exported by the Application Server</description>
+  <name>WildFly: Exported Jakarta EE Specification APIs</name>
+  <description>Jakarta EE Specification APIs exported by the Application Server</description>
 
   <packaging>pom</packaging>
 
@@ -46,8 +46,8 @@
     <!-- Export out the EE Specs and demos -->
 
     <dependency>
-      <groupId>javax.json</groupId>
-      <artifactId>javax.json-api</artifactId>
+      <groupId>jakarta.json</groupId>
+      <artifactId>jakarta.json-api</artifactId>
     </dependency>
 
     <dependency>
@@ -108,7 +108,7 @@
     </dependency>
     <dependency>
       <groupId>org.jboss.spec.javax.transaction</groupId>
-      <artifactId>jboss-transaction-api_1.2_spec</artifactId>
+      <artifactId>jboss-transaction-api_1.3_spec</artifactId>
     </dependency>
     <dependency>
       <groupId>org.jboss.spec.javax.websocket</groupId>
@@ -124,31 +124,31 @@
     </dependency>
     <dependency>
       <groupId>org.jboss.spec.javax.xml.soap</groupId>
-      <artifactId>jboss-saaj-api_1.3_spec</artifactId>
+      <artifactId>jboss-saaj-api_1.4_spec</artifactId>
     </dependency>
     <dependency>
       <groupId>org.jboss.spec.javax.xml.ws</groupId>
       <artifactId>jboss-jaxws-api_2.3_spec</artifactId>
     </dependency>
     <dependency>
-      <groupId>javax.persistence</groupId>
-      <artifactId>javax.persistence-api</artifactId>
+      <groupId>jakarta.persistence</groupId>
+      <artifactId>jakarta.persistence-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>javax.enterprise</groupId>
-      <artifactId>cdi-api</artifactId>
+      <groupId>jakarta.enterprise</groupId>
+      <artifactId>jakarta.enterprise.cdi-api</artifactId>
     </dependency>
     <dependency>
       <groupId>com.sun.mail</groupId>
-      <artifactId>javax.mail</artifactId>
+      <artifactId>jakarta.mail</artifactId>
     </dependency>
     <dependency>
       <groupId>org.jboss.spec.javax.annotation</groupId>
       <artifactId>jboss-annotations-api_1.3_spec</artifactId>
     </dependency>
     <dependency>
-      <groupId>javax.validation</groupId>
-      <artifactId>validation-api</artifactId>
+      <groupId>jakarta.validation</groupId>
+      <artifactId>jakarta.validation-api</artifactId>
     </dependency>
     <dependency>
       <groupId>org.jboss.spec.javax.management.j2ee</groupId>

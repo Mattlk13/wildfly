@@ -23,14 +23,20 @@
 package org.wildfly.clustering.web.cache.session;
 
 import org.wildfly.clustering.ee.Creator;
-import org.wildfly.clustering.ee.Locator;
 import org.wildfly.clustering.ee.Remover;
-import org.wildfly.clustering.web.session.ImmutableSessionAttributes;
+import org.wildfly.clustering.web.session.ImmutableSessionMetaData;
 
 /**
+ * Factory for creating a {@link SessionAttributes} object.
+ * @param <C> the ServletContext specification type
+ * @param <V> the marshalled value type
  * @author Paul Ferraro
  */
-public interface SessionAttributesFactory<V> extends Creator<String, V, Void>, Locator<String, V>, Remover<String> {
-    SessionAttributes createSessionAttributes(String id, V value);
-    ImmutableSessionAttributes createImmutableSessionAttributes(String id, V value);
+public interface SessionAttributesFactory<C, V> extends ImmutableSessionAttributesFactory<V>, Creator<String, V, Void>, Remover<String>, AutoCloseable {
+    SessionAttributes createSessionAttributes(String id, V value, ImmutableSessionMetaData metaData, C context);
+
+    @Override
+    default void close() {
+        // Nothing to close
+    }
 }

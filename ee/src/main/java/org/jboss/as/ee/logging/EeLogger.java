@@ -23,6 +23,7 @@
 package org.jboss.as.ee.logging;
 
 import static org.jboss.logging.Logger.Level.ERROR;
+import static org.jboss.logging.Logger.Level.INFO;
 import static org.jboss.logging.Logger.Level.WARN;
 
 import java.io.IOException;
@@ -30,6 +31,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Set;
+import java.util.concurrent.RejectedExecutionException;
 
 import javax.xml.namespace.QName;
 import javax.xml.stream.Location;
@@ -49,12 +51,14 @@ import org.jboss.jandex.DotName;
 import org.jboss.jandex.MethodInfo;
 import org.jboss.logging.BasicLogger;
 import org.jboss.logging.Logger;
+import org.jboss.logging.Logger.Level;
 import org.jboss.logging.annotations.Cause;
 import org.jboss.logging.annotations.LogMessage;
 import org.jboss.logging.annotations.Message;
 import org.jboss.logging.annotations.MessageLogger;
 import org.jboss.logging.annotations.Param;
 import org.jboss.msc.service.ServiceName;
+import org.jboss.msc.service.StartException;
 import org.jboss.vfs.VirtualFile;
 
 /**
@@ -1147,4 +1151,57 @@ public interface EeLogger extends BasicLogger {
     //        "Support for this setting will be removed once all EE 8 APIs are provided and certified.")
     //void notUsingEE8PreviewMode();
 
+    @Message(id = 120, value = "Failed to locate executor service '%s'")
+    OperationFailedException executorServiceNotFound(ServiceName serviceName);
+
+    @Message(id = 121, value = "Unsupported attribute '%s'")
+    IllegalStateException unsupportedExecutorServiceMetric(String attributeName);
+
+    @Message(id = 122, value = "Directory path %s in %s global-directory resource does not point to a valid directory.")
+    StartException globalDirectoryDoNotExist(String globalDirectoryPath, String globalDirectoryName);
+
+    @Message(id = 123, value = "Global directory %s cannot be added, because global directory %s is already defined.")
+    OperationFailedException oneGlobalDirectory(String newGlobalDirectory, String existingGlobalDirectory);
+
+    @LogMessage(level = Level.WARN)
+    @Message(id = 124, value = "Error deleting Jakarta Authorization Policy")
+    void errorDeletingJACCPolicy(@Cause Throwable t);
+
+    @Message(id = 125, value = "Unable to start the %s service")
+    StartException unableToStartException(String service, @Cause Throwable t);
+
+    @Message(id = 126, value = "Rejected due to maximum number of requests")
+    RejectedExecutionException rejectedDueToMaxRequests();
+
+    @LogMessage(level = WARN)
+    @Message(id = 127, value = "Invalid '%s' name segment for env, name can't start with '/' prefix, prefix has been removed")
+    void invalidNamePrefix(String name);
+
+    /**
+     * Logs a warning message indicating a failure when terminating a managed executor's hung task.
+     * @param cause     the cause of the error.
+     * @param executorName the name of the executor.
+     * @param taskName the name of the hung task.
+     */
+    @LogMessage(level = WARN)
+    @Message(id = 128, value = "Failure when terminating %s hung task %s")
+    void huntTaskTerminationFailure(@Cause Throwable cause, String executorName, String taskName);
+
+    /**
+     * Logs a message indicating a hung task was cancelled.
+     * @param executorName the name of the executor.
+     * @param taskName the name of the hung task.
+     */
+    @LogMessage(level = INFO)
+    @Message(id = 129, value = "%s hung task %s cancelled")
+    void hungTaskCancelled(String executorName, String taskName);
+
+    /**
+     * Logs a message indicating a hung task was not cancelled.
+     * @param executorName the name of the executor.
+     * @param taskName the name of the hung task.
+     */
+    @LogMessage(level = INFO)
+    @Message(id = 130, value = "%s hung task %s not cancelled")
+    void hungTaskNotCancelled(String executorName, String taskName);
 }

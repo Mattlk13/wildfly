@@ -22,11 +22,14 @@
 
 package org.jboss.as.clustering.infinispan.subsystem.remote;
 
+import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 
 import org.infinispan.client.hotrod.configuration.ExhaustedAction;
 import org.jboss.as.clustering.controller.ManagementResourceRegistration;
 import org.jboss.as.clustering.controller.ResourceDescriptor;
+import org.jboss.as.clustering.controller.ResourceServiceConfigurator;
+import org.jboss.as.clustering.controller.ResourceServiceConfiguratorFactory;
 import org.jboss.as.clustering.controller.ResourceServiceHandler;
 import org.jboss.as.clustering.controller.SimpleResourceRegistration;
 import org.jboss.as.clustering.controller.SimpleResourceServiceHandler;
@@ -34,6 +37,7 @@ import org.jboss.as.clustering.controller.validation.EnumValidator;
 import org.jboss.as.clustering.infinispan.subsystem.ComponentResourceDefinition;
 import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.ModelVersion;
+import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.SimpleAttributeDefinitionBuilder;
 import org.jboss.as.controller.client.helpers.MeasurementUnit;
@@ -47,7 +51,7 @@ import org.jboss.dmr.ModelType;
  *
  * @author Radoslav Husar
  */
-public class ConnectionPoolResourceDefinition extends ComponentResourceDefinition {
+public class ConnectionPoolResourceDefinition extends ComponentResourceDefinition implements ResourceServiceConfiguratorFactory {
 
     public static final PathElement PATH = pathElement("connection-pool");
 
@@ -58,9 +62,9 @@ public class ConnectionPoolResourceDefinition extends ComponentResourceDefinitio
                 return builder.setValidator(new EnumValidator<>(ExhaustedAction.class));
             }
         },
-        MAX_ACTIVE("max-active", ModelType.INT, new ModelNode(-1)),
-        MAX_WAIT("max-wait", ModelType.LONG, new ModelNode(-1L)),
-        MIN_EVICTABLE_IDLE_TIME("min-evictable-idle-time", ModelType.LONG, new ModelNode(1800000L)),
+        MAX_ACTIVE("max-active", ModelType.INT, null),
+        MAX_WAIT("max-wait", ModelType.LONG, null),
+        MIN_EVICTABLE_IDLE_TIME("min-evictable-idle-time", ModelType.LONG, new ModelNode(TimeUnit.MINUTES.toMillis(30))),
         MIN_IDLE("min-idle", ModelType.INT, new ModelNode(1)),
         ;
 
@@ -102,9 +106,14 @@ public class ConnectionPoolResourceDefinition extends ComponentResourceDefinitio
         ResourceDescriptor descriptor = new ResourceDescriptor(this.getResourceDescriptionResolver())
                 .addAttributes(Attribute.class)
                 ;
-        ResourceServiceHandler handler = new SimpleResourceServiceHandler(ConnectionPoolServiceConfigurator::new);
+        ResourceServiceHandler handler = new SimpleResourceServiceHandler(this);
         new SimpleResourceRegistration(descriptor, handler).register(registration);
 
         return registration;
+    }
+
+    @Override
+    public ResourceServiceConfigurator createServiceConfigurator(PathAddress address) {
+        return new ConnectionPoolServiceConfigurator(address);
     }
 }

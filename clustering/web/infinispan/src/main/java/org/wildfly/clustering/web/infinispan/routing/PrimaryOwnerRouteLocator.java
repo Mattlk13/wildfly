@@ -23,14 +23,12 @@
 package org.wildfly.clustering.web.infinispan.routing;
 
 import java.util.Map;
+import java.util.function.Function;
 
-import org.infinispan.Cache;
-import org.infinispan.configuration.cache.CacheMode;
-import org.infinispan.remoting.transport.Address;
+import org.wildfly.clustering.ee.infinispan.GroupedKey;
+import org.wildfly.clustering.ee.infinispan.PrimaryOwnerLocator;
 import org.wildfly.clustering.group.Node;
-import org.wildfly.clustering.infinispan.spi.distribution.Key;
 import org.wildfly.clustering.registry.Registry;
-import org.wildfly.clustering.spi.NodeFactory;
 import org.wildfly.clustering.web.routing.RouteLocator;
 
 /**
@@ -38,25 +36,21 @@ import org.wildfly.clustering.web.routing.RouteLocator;
  */
 public class PrimaryOwnerRouteLocator implements RouteLocator {
 
-    private final NodeFactory<Address> factory;
+    private final Function<GroupedKey<String>, Node> primaryOwnerLocator;
     private final Registry<String, Void> registry;
-    private final Cache<String, ?> cache;
     private final boolean preferPrimary;
     private final String localRoute;
 
     public PrimaryOwnerRouteLocator(PrimaryOwnerRouteLocatorConfiguration config) {
-        this.cache = config.getCache();
         this.registry = config.getRegistry();
-        this.factory = config.getMemberFactory();
-        CacheMode mode = config.getCache().getCacheConfiguration().clustering().cacheMode();
-        this.preferPrimary = mode.needsStateTransfer() && !mode.isScattered();
+        this.primaryOwnerLocator = new PrimaryOwnerLocator<>(config.getCache(), config.getMemberFactory(), this.registry.getGroup());
+        this.preferPrimary = config.getCache().getCacheConfiguration().clustering().cacheMode().isClustered();
         this.localRoute = this.registry.getEntry(this.registry.getGroup().getLocalMember()).getKey();
     }
 
     @Override
     public String locate(String sessionId) {
-        Address primaryAddress = this.preferPrimary ? this.cache.getAdvancedCache().getDistributionManager().getCacheTopology().getDistribution(new Key<>(sessionId)).primary() : null;
-        Node primaryMember = (primaryAddress != null) ? this.factory.createNode(primaryAddress) : null;
+        Node primaryMember = this.preferPrimary ? this.primaryOwnerLocator.apply(new GroupedKey<>(sessionId)) : null;
         Map.Entry<String, Void> entry = (primaryMember != null) ? this.registry.getEntry(primaryMember) : null;
         return (entry != null) ? entry.getKey() : this.localRoute;
     }

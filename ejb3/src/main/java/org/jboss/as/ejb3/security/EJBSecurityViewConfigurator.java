@@ -22,6 +22,8 @@
 
 package org.jboss.as.ejb3.security;
 
+import static org.jboss.as.server.deployment.Attachments.CAPABILITY_SERVICE_SUPPORT;
+
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -30,6 +32,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.jboss.as.controller.capability.CapabilityServiceSupport;
 import org.jboss.as.ee.component.ComponentConfiguration;
 import org.jboss.as.ee.component.ViewConfiguration;
 import org.jboss.as.ee.component.ViewConfigurator;
@@ -42,7 +45,6 @@ import org.jboss.as.ejb3.component.EJBViewDescription;
 import org.jboss.as.ejb3.component.MethodIntf;
 import org.jboss.as.ejb3.deployment.ApplicableMethodInformation;
 import org.jboss.as.ejb3.security.service.EJBViewMethodSecurityAttributesService;
-import org.jboss.as.security.deployment.SecurityAttachments;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
 import org.jboss.as.server.deployment.DeploymentUnit;
 import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
@@ -57,6 +59,9 @@ import static org.jboss.as.ejb3.logging.EjbLogger.ROOT_LOGGER;
 
 /**
  * {@link ViewConfigurator} responsible for setting up necessary security interceptors on an EJB view.
+ *
+ * NOTE: References in this file to Enterprise JavaBeans(EJB) refer to the Jakarta Enterprise Beans unless otherwise noted.
+ *
  * <p/>
  * User: Jaikiran Pai
  */
@@ -70,7 +75,7 @@ public class EJBSecurityViewConfigurator implements ViewConfigurator {
 
         final DeploymentUnit deploymentUnit = context.getDeploymentUnit();
         final EJBComponentDescription ejbComponentDescription = (EJBComponentDescription) componentConfiguration.getComponentDescription();
-        final boolean isSecurityDomainKnown = ejbComponentDescription.isSecurityDomainKnown();
+        final boolean elytronSecurityDomain = ejbComponentDescription.getSecurityDomainServiceName() != null;
         final String viewClassName = viewDescription.getViewClassName();
         final EJBViewDescription ejbViewDescription = (EJBViewDescription) viewDescription;
 
@@ -89,7 +94,7 @@ public class EJBSecurityViewConfigurator implements ViewConfigurator {
         }
 
 
-        if ((! deploymentUnit.hasAttachment(SecurityAttachments.SECURITY_ENABLED)) && (! isSecurityDomainKnown)) {
+        if (!legacySecurityAvailable(deploymentUnit) && !elytronSecurityDomain) {
             // the security subsystem is not present and Elytron is not being used for security, we don't apply any security settings
             installAttributeServiceIfRequired(context, viewMethodSecurityAttributesServiceBuilder, viewMethodSecurityAttributesServiceName);
             return;
@@ -98,7 +103,8 @@ public class EJBSecurityViewConfigurator implements ViewConfigurator {
         // The getSecurityDomain() will return a null value if neither an explicit security domain is configured
         // for the bean nor there's any default security domain that's configured at EJB3 subsystem level.
         // In such cases, we do *not* apply any security interceptors
-        if (ejbComponentDescription.getSecurityDomain() == null || ejbComponentDescription.getSecurityDomain().isEmpty()) {
+        String resolvedSecurityDomain = ejbComponentDescription.getResolvedSecurityDomain();
+        if (elytronSecurityDomain == false && (resolvedSecurityDomain == null || resolvedSecurityDomain.isEmpty())) {
             if (ROOT_LOGGER.isDebugEnabled()) {
                 ROOT_LOGGER
                         .debug("Security is *not* enabled on EJB: "
@@ -130,10 +136,10 @@ public class EJBSecurityViewConfigurator implements ViewConfigurator {
             }
             // setup the authorization interceptor
             final ApplicableMethodInformation<EJBMethodSecurityAttribute> permissions = ejbComponentDescription.getDescriptorMethodPermissions();
-            boolean methodHasSecurityMetadata = handlePermissions(contextID, componentConfiguration, viewConfiguration, deploymentReflectionIndex, viewClassName, ejbViewDescription, viewMethod, permissions, false, viewMethodSecurityAttributesServiceBuilder, ejbComponentDescription);
+            boolean methodHasSecurityMetadata = handlePermissions(contextID, componentConfiguration, viewConfiguration, deploymentReflectionIndex, viewClassName, ejbViewDescription, viewMethod, permissions, false, viewMethodSecurityAttributesServiceBuilder, ejbComponentDescription, elytronSecurityDomain);
             if (!methodHasSecurityMetadata) {
                 //if it was not handled by the descriptor processor we look for annotation basic info
-                methodHasSecurityMetadata = handlePermissions(contextID, componentConfiguration, viewConfiguration, deploymentReflectionIndex, viewClassName, ejbViewDescription, viewMethod, ejbComponentDescription.getAnnotationMethodPermissions(), true, viewMethodSecurityAttributesServiceBuilder, ejbComponentDescription);
+                methodHasSecurityMetadata = handlePermissions(contextID, componentConfiguration, viewConfiguration, deploymentReflectionIndex, viewClassName, ejbViewDescription, viewMethod, ejbComponentDescription.getAnnotationMethodPermissions(), true, viewMethodSecurityAttributesServiceBuilder, ejbComponentDescription, elytronSecurityDomain);
             }
             // if any method has security metadata then the bean has method level security metadata
             if (methodHasSecurityMetadata) {
@@ -145,10 +151,12 @@ public class EJBSecurityViewConfigurator implements ViewConfigurator {
         }
 
         final boolean securityRequired = beanHasMethodLevelSecurityMetadata || ejbComponentDescription.hasBeanLevelSecurityMetadata();
-        ejbComponentDescription.setSecurityRequired(securityRequired);
+        if (securityRequired) {
+            ejbComponentDescription.setSecurityRequired(securityRequired);
+        }
         // setup the security context interceptor
-        if (isSecurityDomainKnown) {
-            final HashMap<Integer, InterceptorFactory> elytronInterceptorFactories = ejbComponentDescription.getElytronInterceptorFactories(contextID, ejbComponentDescription.isEnableJacc(), true);
+        if (elytronSecurityDomain) {
+            final HashMap<Integer, InterceptorFactory> elytronInterceptorFactories = ejbComponentDescription.getElytronInterceptorFactories(contextID, ejbComponentDescription.requiresJacc(), true);
             elytronInterceptorFactories.forEach((priority, elytronInterceptorFactory) -> viewConfiguration.addViewInterceptor(elytronInterceptorFactory, priority));
         } else {
             viewConfiguration.addViewInterceptor(new SecurityContextInterceptorFactory(securityRequired, true, contextID), InterceptorOrder.View.SECURITY_CONTEXT);
@@ -167,7 +175,7 @@ public class EJBSecurityViewConfigurator implements ViewConfigurator {
                         viewMethodSecurityAttributesServiceBuilder.addMethodSecurityMetadata(viewMethod, EJBMethodSecurityAttribute.denyAll());
                     }
                     // "deny access" implies we need the authorization interceptor to be added so that it can nuke the invocation
-                    if (isSecurityDomainKnown) {
+                    if (elytronSecurityDomain) {
                         viewConfiguration.addViewInterceptor(viewMethod, new ImmediateInterceptorFactory(RolesAllowedInterceptor.DENY_ALL), InterceptorOrder.View.EJB_SECURITY_AUTHORIZATION_INTERCEPTOR);
                     } else {
                         final Interceptor authorizationInterceptor = new AuthorizationInterceptor(EJBMethodSecurityAttribute.denyAll(), viewClassName, viewMethod, contextID);
@@ -179,6 +187,11 @@ public class EJBSecurityViewConfigurator implements ViewConfigurator {
         installAttributeServiceIfRequired(context, viewMethodSecurityAttributesServiceBuilder, viewMethodSecurityAttributesServiceName);
     }
 
+    private static boolean legacySecurityAvailable(DeploymentUnit deploymentUnit) {
+        final CapabilityServiceSupport support = deploymentUnit.getAttachment(CAPABILITY_SERVICE_SUPPORT);
+        return support.hasCapability("org.wildfly.legacy-security");
+    }
+
     private void installAttributeServiceIfRequired(DeploymentPhaseContext context, EJBViewMethodSecurityAttributesService.Builder viewMethodSecurityAttributesServiceBuilder, ServiceName viewMethodSecurityAttributesServiceName) {
         if (viewMethodSecurityAttributesServiceBuilder != null) {
             final EJBViewMethodSecurityAttributesService viewMethodSecurityAttributesService = viewMethodSecurityAttributesServiceBuilder.build();
@@ -187,7 +200,7 @@ public class EJBSecurityViewConfigurator implements ViewConfigurator {
     }
 
     private boolean handlePermissions(String contextID, ComponentConfiguration componentConfiguration, ViewConfiguration viewConfiguration, DeploymentReflectionIndex deploymentReflectionIndex, String viewClassName, EJBViewDescription ejbViewDescription, Method viewMethod, ApplicableMethodInformation<EJBMethodSecurityAttribute> permissions, boolean annotations,
-                                      final EJBViewMethodSecurityAttributesService.Builder viewMethodSecurityAttributesServiceBuilder, EJBComponentDescription componentDescription) {
+                                      final EJBViewMethodSecurityAttributesService.Builder viewMethodSecurityAttributesServiceBuilder, EJBComponentDescription componentDescription, boolean elytronSecurityDomain) {
         EJBMethodSecurityAttribute ejbMethodSecurityMetaData = permissions.getViewAttribute(ejbViewDescription.getMethodIntf(), viewMethod);
         final List<EJBMethodSecurityAttribute> allAttributes = new ArrayList<EJBMethodSecurityAttribute>();
         allAttributes.addAll(permissions.getAllAttributes(ejbViewDescription.getMethodIntf(), viewMethod));
@@ -238,11 +251,11 @@ public class EJBSecurityViewConfigurator implements ViewConfigurator {
             }
             // add the interceptor
             final Interceptor authorizationInterceptor;
-            if (componentDescription.isSecurityDomainKnown()) {
+            if (elytronSecurityDomain) {
                 if (ejbMethodSecurityMetaData.isDenyAll()) {
                     authorizationInterceptor = RolesAllowedInterceptor.DENY_ALL;
                 } else {
-                    if (componentDescription.isEnableJacc()) {
+                    if (componentDescription.requiresJacc()) {
                         authorizationInterceptor = new JaccInterceptor(viewClassName, viewMethod);
                     } else {
                         authorizationInterceptor = new RolesAllowedInterceptor(ejbMethodSecurityMetaData.getRolesAllowed());

@@ -39,7 +39,7 @@ import javax.security.jacc.WebResourcePermission;
 import javax.security.jacc.WebRoleRefPermission;
 import javax.security.jacc.WebUserDataPermission;
 
-import org.jboss.as.security.service.JaccService;
+import org.jboss.as.ee.security.JaccService;
 import org.jboss.as.web.common.WarMetaData;
 import org.jboss.metadata.javaee.spec.SecurityRoleRefMetaData;
 import org.jboss.metadata.javaee.spec.SecurityRoleRefsMetaData;
@@ -56,7 +56,7 @@ import org.jboss.metadata.web.spec.WebResourceCollectionMetaData;
 import org.jboss.metadata.web.spec.WebResourceCollectionsMetaData;
 
 /**
- * A service that creates JACC permissions for a web deployment
+ * A service that creates Jakarta Authorization permissions for a web deployment
  * @author Scott.Stark@jboss.org
  * @author Anil.Saldhana@jboss.org
  * @author <a href="mailto:mmoyses@redhat.com">Marcus Moyses</a>
@@ -309,8 +309,8 @@ public class WarJACCService extends JaccService<WarMetaData> {
             // JACC 1.1: create !(httpmethods) in unchecked perms
             if(jbossWebMetaData.getDenyUncoveredHttpMethods() == null) {
                 if (seenMethods.size() != NUMBER_OF_HTTP_METHODS) {
-                    WebResourcePermission wrpUnchecked = new WebResourcePermission(qurl, "!"
-                            + getCommaSeparatedString(seenMethods.toArray(new String[seenMethods.size()])));
+                    WebResourcePermission wrpUnchecked = seenMethods.size() == 0 ? new WebResourcePermission(qurl, (String) null)
+                            : new WebResourcePermission(qurl, "!" + getCommaSeparatedString(seenMethods.toArray(new String[seenMethods.size()])));
                     pc.addToUncheckedPolicy(wrpUnchecked);
                 }
             }
@@ -442,7 +442,7 @@ public class WarJACCService extends JaccService<WarMetaData> {
     }
 
     /**
-     * JACC url pattern Qualified URL Pattern Names.
+     * Jakarta Authorization url pattern Qualified URL Pattern Names.
      *
      * The rules for qualifying a URL pattern are dependent on the rules for determining if one URL pattern matches another as
      * defined in Section 3.1.3.3, Servlet URL-Pattern Matching Rules, and are described as follows: - If the pattern is a path
@@ -818,7 +818,11 @@ public class WarJACCService extends JaccService<WarMetaData> {
          * @return true if the other pattern starts with this pattern less the "/*", false otherwise
          */
         public boolean matches(PatternInfo other) {
-            int matchLength = pattern.length() - 2;
+            if ("/*".equals(pattern)) {
+                // all patterns except EXACT ones are matched (and EXACT ones are never checked)
+                return true;
+            }
+            int matchLength = pattern.length() - 1;
             boolean matches = pattern.regionMatches(0, other.pattern, 0, matchLength);
             return matches;
         }

@@ -23,18 +23,23 @@
 package org.jboss.as.clustering.infinispan.subsystem.remote;
 
 import java.util.EnumSet;
+import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 
+import org.jboss.as.clustering.controller.AttributeTranslation;
 import org.jboss.as.clustering.controller.Capability;
 import org.jboss.as.clustering.controller.CommonRequirement;
 import org.jboss.as.clustering.controller.ManagementResourceRegistration;
 import org.jboss.as.clustering.controller.ResourceDescriptor;
+import org.jboss.as.clustering.controller.ResourceServiceConfigurator;
+import org.jboss.as.clustering.controller.ResourceServiceConfiguratorFactory;
 import org.jboss.as.clustering.controller.ResourceServiceHandler;
 import org.jboss.as.clustering.controller.SimpleResourceRegistration;
 import org.jboss.as.clustering.controller.SimpleResourceServiceHandler;
 import org.jboss.as.clustering.controller.UnaryCapabilityNameResolver;
 import org.jboss.as.clustering.controller.UnaryRequirementCapability;
 import org.jboss.as.clustering.controller.transform.RequiredChildResourceDiscardPolicy;
+import org.jboss.as.clustering.controller.transform.SimpleAttributeConverter;
 import org.jboss.as.clustering.controller.validation.EnumValidator;
 import org.jboss.as.clustering.infinispan.subsystem.ComponentResourceDefinition;
 import org.jboss.as.clustering.infinispan.subsystem.InfinispanModel;
@@ -42,11 +47,14 @@ import org.jboss.as.clustering.infinispan.subsystem.TransactionMode;
 import org.jboss.as.clustering.infinispan.subsystem.TransactionResourceCapabilityReference;
 import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.ModelVersion;
+import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.SimpleAttributeDefinition;
 import org.jboss.as.controller.SimpleAttributeDefinitionBuilder;
 import org.jboss.as.controller.client.helpers.MeasurementUnit;
 import org.jboss.as.controller.registry.AttributeAccess;
+import org.jboss.as.controller.transform.TransformationContext;
+import org.jboss.as.controller.transform.description.RejectAttributeChecker.SimpleRejectAttributeChecker;
 import org.jboss.as.controller.transform.description.ResourceTransformationDescriptionBuilder;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
@@ -56,7 +64,8 @@ import org.wildfly.clustering.infinispan.client.InfinispanClientRequirement;
  * Resource definition for the transaction component of a remote cache container.
  * @author Paul Ferraro
  */
-public class RemoteTransactionResourceDefinition extends ComponentResourceDefinition {
+@Deprecated
+public class RemoteTransactionResourceDefinition extends ComponentResourceDefinition implements ResourceServiceConfiguratorFactory {
 
     public static final PathElement PATH = pathElement("transaction");
 
@@ -64,10 +73,10 @@ public class RemoteTransactionResourceDefinition extends ComponentResourceDefini
         MODE("mode", ModelType.STRING, new ModelNode(TransactionMode.NONE.name())) {
             @Override
             public SimpleAttributeDefinitionBuilder apply(SimpleAttributeDefinitionBuilder builder) {
-                return builder.setValidator(new EnumValidator<>(TransactionMode.class, EnumSet.of(TransactionMode.NONE, TransactionMode.BATCH, TransactionMode.NON_DURABLE_XA)));
+                return builder.setValidator(new EnumValidator<>(TransactionMode.class, EnumSet.complementOf(EnumSet.of(TransactionMode.FULL_XA))));
             }
         },
-        TIMEOUT("timeout", ModelType.LONG, new ModelNode(60000L)) {
+        TIMEOUT("timeout", ModelType.LONG, new ModelNode(TimeUnit.MINUTES.toMillis(1))) {
             @Override
             public SimpleAttributeDefinitionBuilder apply(SimpleAttributeDefinitionBuilder builder) {
                 return builder.setMeasurementUnit(MeasurementUnit.MILLISECONDS);
@@ -94,11 +103,30 @@ public class RemoteTransactionResourceDefinition extends ComponentResourceDefini
     static void buildTransformation(ModelVersion version, ResourceTransformationDescriptionBuilder parent) {
         if (InfinispanModel.VERSION_9_0_0.requiresTransformation(version)) {
             parent.addChildResource(PATH, RequiredChildResourceDiscardPolicy.REJECT_AND_WARN);
+        } else {
+            ResourceTransformationDescriptionBuilder builder = parent.addChildResource(PATH);
+            if (InfinispanModel.VERSION_15_0_0.requiresTransformation(version)) {
+                builder.getAttributeBuilder()
+                    .setValueConverter(new SimpleAttributeConverter(new SimpleAttributeConverter.Converter() {
+                        @Override
+                        public void convert(PathAddress address, String name, ModelNode value, ModelNode model, TransformationContext context) {
+                            ModelNode parentModel = context.readResourceFromRoot(address.getParent()).getModel();
+                            if (parentModel.hasDefined(RemoteCacheContainerResourceDefinition.Attribute.TRANSACTION_TIMEOUT.getName())) {
+                                value.set(parentModel.get(RemoteCacheContainerResourceDefinition.Attribute.TRANSACTION_TIMEOUT.getName()));
+                            }
+                        }
+                    }), Attribute.TIMEOUT.getDefinition())
+                    ;
+            }
+            if (InfinispanModel.VERSION_12_0_0.requiresTransformation(version)) {
+                builder.getAttributeBuilder().addRejectCheck(new SimpleRejectAttributeChecker(new ModelNode(TransactionMode.NON_XA.name())), Attribute.MODE.getDefinition());
+            }
         }
     }
 
     public RemoteTransactionResourceDefinition() {
         super(PATH);
+        this.setDeprecated(InfinispanModel.VERSION_14_0_0.getVersion());
     }
 
     @Override
@@ -106,12 +134,28 @@ public class RemoteTransactionResourceDefinition extends ComponentResourceDefini
         ManagementResourceRegistration registration = parent.registerSubModel(new RemoteTransactionResourceDefinition());
         Capability dependentCapability = new UnaryRequirementCapability(InfinispanClientRequirement.REMOTE_CONTAINER_CONFIGURATION, UnaryCapabilityNameResolver.PARENT);
         ResourceDescriptor descriptor = new ResourceDescriptor(this.getResourceDescriptionResolver())
-                .addAttributes(Attribute.class)
+                .addAttributes(EnumSet.complementOf(EnumSet.of(Attribute.TIMEOUT)))
+                .addAttributeTranslation(Attribute.TIMEOUT, new AttributeTranslation() {
+                    @Override
+                    public org.jboss.as.clustering.controller.Attribute getTargetAttribute() {
+                        return RemoteCacheContainerResourceDefinition.Attribute.TRANSACTION_TIMEOUT;
+                    }
+
+                    @Override
+                    public UnaryOperator<PathAddress> getPathAddressTransformation() {
+                        return PathAddress::getParent;
+                    }
+                })
                 // Add a requirement on the tm capability to the parent cache capability
                 .addResourceCapabilityReference(new TransactionResourceCapabilityReference(dependentCapability, CommonRequirement.LOCAL_TRANSACTION_PROVIDER, Attribute.MODE, EnumSet.of(TransactionMode.NONE, TransactionMode.BATCH)))
                 ;
-        ResourceServiceHandler handler = new SimpleResourceServiceHandler(RemoteTransactionServiceConfigurator::new);
+        ResourceServiceHandler handler = new SimpleResourceServiceHandler(this);
         new SimpleResourceRegistration(descriptor, handler).register(registration);
         return registration;
+    }
+
+    @Override
+    public ResourceServiceConfigurator createServiceConfigurator(PathAddress address) {
+        return new RemoteTransactionServiceConfigurator(address);
     }
 }

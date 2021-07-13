@@ -21,6 +21,8 @@
  */
 package org.jboss.as.test.clustering.cluster;
 
+import static org.wildfly.common.Assert.checkNotNullArrayParam;
+
 import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.Map;
@@ -29,6 +31,12 @@ import java.util.stream.Stream;
 
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
+import org.infinispan.client.hotrod.ProtocolVersion;
+import org.infinispan.commons.test.skip.OS;
+import org.infinispan.commons.test.skip.SkipJunit;
+import org.infinispan.server.test.core.ServerRunMode;
+import org.infinispan.server.test.core.TestSystemPropertyNames;
+import org.infinispan.server.test.junit4.InfinispanServerRuleBuilder;
 import org.jboss.arquillian.container.spi.Container;
 import org.jboss.arquillian.container.spi.ContainerRegistry;
 import org.jboss.arquillian.container.test.api.Deployer;
@@ -37,8 +45,10 @@ import org.jboss.as.arquillian.api.WildFlyContainerController;
 import org.jboss.as.test.clustering.NodeUtil;
 import org.jboss.as.test.shared.TimeoutUtil;
 import org.jboss.logging.Logger;
+import org.jgroups.util.Util;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.rules.TestRule;
 
 /**
  * Base implementation for every clustering test which guarantees a framework contract as follows:
@@ -76,6 +86,7 @@ public abstract class AbstractClusteringTestCase {
     public static final String DEPLOYMENT_3 = "deployment-3";
     public static final String DEPLOYMENT_4 = "deployment-4";
     public static final String[] TWO_DEPLOYMENTS = new String[] { DEPLOYMENT_1, DEPLOYMENT_2 };
+    public static final String[] THREE_DEPLOYMENTS = new String[] { DEPLOYMENT_1, DEPLOYMENT_2, DEPLOYMENT_3 };
     public static final String[] FOUR_DEPLOYMENTS = new String[] { DEPLOYMENT_1, DEPLOYMENT_2, DEPLOYMENT_3, DEPLOYMENT_4 };
 
     // Helper deployment names
@@ -87,7 +98,27 @@ public abstract class AbstractClusteringTestCase {
     public static final String[] FOUR_DEPLOYMENT_HELPERS = new String[] { DEPLOYMENT_HELPER_1, DEPLOYMENT_HELPER_2, DEPLOYMENT_HELPER_3, DEPLOYMENT_HELPER_4 };
 
     // Infinispan Server
-    public static final String INFINISPAN_SERVER_1 = "infinispan-server-1";
+    public static final String INFINISPAN_SERVER_HOME = System.getProperty("infinispan.server.home");
+    public static final String INFINISPAN_SERVER_PROFILE = "infinispan-server/infinispan.xml";
+    public static final String INFINISPAN_SERVER_PROTOCOL_VERSION = ProtocolVersion.DEFAULT_PROTOCOL_VERSION.toString();
+    public static final String INFINISPAN_SERVER_ADDRESS = "127.0.0.1";
+    public static final int INFINISPAN_SERVER_PORT = 11222;
+
+    public static TestRule infinispanServerTestRule() {
+        // Disable on Windows until https://issues.redhat.com/browse/ISPN-12041 is fixed
+        return Util.checkForWindows() ? new SkipJunit(OS.WINDOWS) : InfinispanServerRuleBuilder
+                .config(INFINISPAN_SERVER_PROFILE)
+                .property(TestSystemPropertyNames.INFINISPAN_SERVER_HOME, INFINISPAN_SERVER_HOME)
+                .numServers(1)
+                .runMode(ServerRunMode.FORKED)
+                .build();
+    }
+
+    // Undertow-based WildFly load-balancer
+    public static final String LOAD_BALANCER_1 = "load-balancer-1";
+
+    // H2 database
+    public static final String DB_PORT = System.getProperty("dbport", "9092");
 
     // Timeouts
     public static final int GRACE_TIME_TO_REPLICATE = TimeoutUtil.adjust(3000);
@@ -163,12 +194,12 @@ public abstract class AbstractClusteringTestCase {
                 // Even though we should be able to just stop the container object this currently fails with:
                 // WFARQ-47 Calling "container.stop();" always ends exceptionally "Caught exception closing ManagementClient: java.lang.NullPointerException"
                 this.stop(container.getName());
-                log.infof("Stopped container '%s' which was started but not requested for this test.", container.getName());
+                log.debugf("Stopped container '%s' which was started but not requested for this test.", container.getName());
             }
         });
 
-        NodeUtil.start(this.controller, nodes);
-        NodeUtil.deploy(this.deployer, deployments);
+        start(nodes);
+        deploy(deployments);
     }
 
     /**
@@ -176,8 +207,8 @@ public abstract class AbstractClusteringTestCase {
      */
     @After
     public void afterTestMethod() throws Exception {
-        NodeUtil.start(this.controller, nodes);
-        NodeUtil.undeploy(this.deployer, deployments);
+        start(nodes);
+        undeploy(deployments);
     }
 
     // Node and deployment lifecycle management convenience methods
@@ -210,6 +241,21 @@ public abstract class AbstractClusteringTestCase {
         return NODE_TO_DEPLOYMENT.get(node);
     }
 
+    public static int getPortOffsetForNode(String node) {
+        switch (node) {
+            case NODE_1:
+                return 0;
+            case NODE_2:
+                return 100;
+            case NODE_3:
+                return 200;
+            case NODE_4:
+                return 300;
+            default:
+                throw new IllegalArgumentException();
+        }
+    }
+
     public interface Lifecycle {
         void start(String... nodes);
         void stop(String... nodes);
@@ -229,10 +275,7 @@ public abstract class AbstractClusteringTestCase {
         String[] getContainers(String... nodes) {
             String[] containers = new String[nodes.length];
             for (int i = 0; i < nodes.length; ++i) {
-                String node = nodes[i];
-                if (node == null) {
-                    throw new IllegalArgumentException();
-                }
+                String node = checkNotNullArrayParam("nodes", i, nodes[i]);
                 containers[i] = node;
             }
             return containers;

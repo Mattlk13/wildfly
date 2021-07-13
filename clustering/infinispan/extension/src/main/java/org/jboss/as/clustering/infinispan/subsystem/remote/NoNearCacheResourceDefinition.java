@@ -24,9 +24,7 @@ package org.jboss.as.clustering.infinispan.subsystem.remote;
 
 import org.jboss.as.clustering.controller.ManagementResourceRegistration;
 import org.jboss.as.clustering.controller.ResourceDescriptor;
-import org.jboss.as.clustering.controller.ResourceServiceHandler;
 import org.jboss.as.clustering.controller.SimpleResourceRegistration;
-import org.jboss.as.clustering.controller.SimpleResourceServiceHandler;
 import org.jboss.as.controller.ModelVersion;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.transform.description.ResourceTransformationDescriptionBuilder;
@@ -36,6 +34,7 @@ import org.jboss.as.controller.transform.description.ResourceTransformationDescr
  *
  * @author Radoslav Husar
  */
+@Deprecated
 public class NoNearCacheResourceDefinition extends NearCacheResourceDefinition {
 
     static final PathElement PATH = pathElement("none");
@@ -53,8 +52,7 @@ public class NoNearCacheResourceDefinition extends NearCacheResourceDefinition {
         ManagementResourceRegistration registration = parentRegistration.registerSubModel(this);
 
         ResourceDescriptor descriptor = new ResourceDescriptor(this.getResourceDescriptionResolver());
-        ResourceServiceHandler handler = new SimpleResourceServiceHandler(NoNearCacheServiceConfigurator::new);
-        new SimpleResourceRegistration(descriptor, handler).register(registration);
+        new SimpleResourceRegistration(descriptor, null).register(registration);
 
         return registration;
     }

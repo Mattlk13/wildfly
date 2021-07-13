@@ -21,6 +21,7 @@
 */
 package org.jboss.as.weld;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
@@ -60,19 +61,6 @@ public class WeldSubsystemTestCase extends AbstractSubsystemBaseTest {
         return "schema/jboss-as-weld_4_0.xsd";
     }
 
-    @Override
-    protected String[] getSubsystemTemplatePaths() throws IOException {
-        return new String[] {
-            "/subsystem-templates/weld.xml"
-        };
-    }
-
-    @Test
-    @Override
-    public void testSchemaOfSubsystemTemplates() throws Exception {
-        super.testSchemaOfSubsystemTemplates();
-    }
-
     @Test
     public void testSubsystem10() throws Exception {
         standardSubsystemTest("subsystem_1_0.xml", false);
@@ -86,16 +74,6 @@ public class WeldSubsystemTestCase extends AbstractSubsystemBaseTest {
     @Test
     public void testSubsystem30() throws Exception {
         standardSubsystemTest("subsystem_3_0.xml", false);
-    }
-
-    @Test
-    public void testTransformersASEAP620() throws Exception {
-        testTransformers10(ModelTestControllerVersion.EAP_6_2_0);
-    }
-
-    @Test
-    public void testTransformersASEAP630() throws Exception {
-        testTransformers10(ModelTestControllerVersion.EAP_6_3_0);
     }
 
     @Test
@@ -134,16 +112,6 @@ public class WeldSubsystemTestCase extends AbstractSubsystemBaseTest {
         assertTrue(mainServices.isSuccessfulBoot());
         assertTrue(legacyServices.isSuccessfulBoot());
         checkSubsystemModelTransformation(mainServices, modelVersion);
-    }
-
-    @Test
-    public void testTransformersRejectionASEAP620() throws Exception {
-        testRejectTransformers10(ModelTestControllerVersion.EAP_6_2_0);
-    }
-
-    @Test
-    public void testTransformersRejectionASEAP630() throws Exception {
-        testRejectTransformers10(ModelTestControllerVersion.EAP_6_3_0);
     }
 
     @Test
@@ -199,6 +167,21 @@ public class WeldSubsystemTestCase extends AbstractSubsystemBaseTest {
                                 .addConfig(new NewAttributesConfig(WeldResourceDefinition.THREAD_POOL_SIZE_ATTRIBUTE)).build()
 
                 ));
+    }
+
+    @Test
+    public void testExpressionInAttributeValue() throws Exception {
+        ModelVersion modelVersion = ModelVersion.create(3, 0, 0);
+        KernelServicesBuilder builder = createKernelServicesBuilder(AdditionalInitialization.MANAGEMENT)
+                .setSubsystemXmlResource("subsystem_with_expression.xml");
+        KernelServices mainServices = builder.build();
+        assertTrue(mainServices.isSuccessfulBoot());
+        ModelNode weldNode = mainServices.readWholeModel().get("subsystem", getMainSubsystemName());
+
+        assertEquals(true, weldNode.get("require-bean-descriptor").resolve().asBoolean());
+        assertEquals(9, weldNode.get("thread-pool-size").resolve().asInt());
+        assertEquals(true, weldNode.get("development-mode").resolve().asBoolean());
+        assertEquals(true, weldNode.get("non-portable-mode").resolve().asBoolean());
     }
 
 

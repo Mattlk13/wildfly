@@ -28,10 +28,10 @@ import org.jboss.msc.service.Service;
 import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceTarget;
-import org.wildfly.clustering.dispatcher.CommandDispatcherFactory;
 import org.wildfly.clustering.group.Group;
 import org.wildfly.clustering.provider.ServiceProviderRegistry;
 import org.wildfly.clustering.server.logging.ClusteringServerLogger;
+import org.wildfly.clustering.service.AsynchronousServiceBuilder;
 import org.wildfly.clustering.service.CompositeDependency;
 import org.wildfly.clustering.service.SimpleServiceNameProvider;
 import org.wildfly.clustering.service.SupplierDependency;
@@ -40,6 +40,7 @@ import org.wildfly.clustering.singleton.SingletonElectionPolicy;
 import org.wildfly.clustering.singleton.SingletonService;
 import org.wildfly.clustering.singleton.SingletonServiceBuilder;
 import org.wildfly.clustering.singleton.election.SimpleSingletonElectionPolicy;
+import org.wildfly.clustering.spi.dispatcher.CommandDispatcherFactory;
 
 /**
  * Distributed {@link SingletonServiceBuilder} implementation that uses JBoss MSC 1.3.x service installation.
@@ -74,7 +75,7 @@ public class DistributedSingletonServiceBuilder<T> extends SimpleServiceNameProv
     @Override
     public ServiceBuilder<T> build(ServiceTarget target) {
         SingletonService<T> service = new LegacyDistributedSingletonService<>(this, this.primaryService, this.backupService);
-        ServiceBuilder<T> installer = target.addService(this.getServiceName(), service);
+        ServiceBuilder<T> installer = new AsynchronousServiceBuilder<>(this.getServiceName(), service).build(target);
         return new CompositeDependency(this.registry, this.dispatcherFactory).register(installer);
     }
 

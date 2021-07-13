@@ -28,6 +28,7 @@ package org.wildfly.extension.undertow;
 
 public interface Constants {
     String ACCESS_LOG = "access-log";
+    String CONSOLE_ACCESS_LOG = "console-access-log";
     String AJP_LISTENER = "ajp-listener";
     String BUFFER_CACHE = "buffer-cache";
     String BUFFER_CACHES = "buffer-caches";
@@ -46,6 +47,7 @@ public interface Constants {
     String HTTP_INVOKER = "http-invoker";
     String LISTENER = "listener";
     String INSTANCE_ID = "instance-id";
+    String OBFUSCATE_SESSION_ROUTE = "obfuscate-session-route";
     String NAME = "name";
     String WORKER = "worker";
     String SERVLET_CONTAINER = "servlet-container";
@@ -73,7 +75,7 @@ public interface Constants {
     String SCHEME = "scheme";
     String MAX_POST_SIZE = "max-post-size";
     String DEFAULT_RESPONSE_CODE = "default-response-code";
-    /*JSP config */
+    /*Jakarta Server Pages config */
     String CHECK_INTERVAL = "check-interval";
     String CONTAINER = "container";
     String DEVELOPMENT = "development";
@@ -230,10 +232,19 @@ public interface Constants {
     String DEFLATER_LEVEL = "deflater-level";
     String MAX_RETRIES = "max-retries";
 
+    // Affinity
+    String AFFINITY = "affinity";
+    String NO_AFFINITY = "no-affinity";
+    String SINGLE = "single";
+    String SINGLE_AFFINITY = "single-affinity";
+    String RANKED = "ranked";
+    String RANKED_AFFINITY = "ranked-affinity";
+    String DELIMITER = "delimiter";
+
     // Elytron Integration
     String APPLICATION_SECURITY_DOMAIN = "application-security-domain";
     String APPLICATION_SECURITY_DOMAINS = "application-security-domains";
-    String HTTP_AUTHENITCATION_FACTORY = "http-authentication-factory";
+    String HTTP_AUTHENTICATION_FACTORY = "http-authentication-factory";
     String OVERRIDE_DEPLOYMENT_CONFIG = "override-deployment-config";
     String REFERENCING_DEPLOYMENTS = "referencing-deployments";
     String SECURITY_DOMAIN = "security-domain";
@@ -256,6 +267,7 @@ public interface Constants {
     String GET_SESSION_CREATION_TIME = "get-session-creation-time";
     String GET_SESSION_CREATION_TIME_MILLIS = "get-session-creation-time-millis";
     String DEFAULT_COOKIE_VERSION = "default-cookie-version";
+    String PRESERVE_PATH_ON_FORWARD = "preserve-path-on-forward";
 
     String PROXY_PROTOCOL = "proxy-protocol";
     String MAX_POOL_SIZE = "max-pool-size";

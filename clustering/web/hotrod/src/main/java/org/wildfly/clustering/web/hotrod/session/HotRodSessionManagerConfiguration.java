@@ -23,8 +23,6 @@ package org.wildfly.clustering.web.hotrod.session;
 
 import java.time.Duration;
 
-import javax.servlet.ServletContext;
-
 import org.wildfly.clustering.Registrar;
 import org.wildfly.clustering.ee.Batcher;
 import org.wildfly.clustering.ee.cache.tx.TransactionBatch;
@@ -33,13 +31,13 @@ import org.wildfly.clustering.web.session.SessionExpirationListener;
 
 /**
  * Configuration for an {@link HotRodSessionManager}.
+ * @param <C> the ServletContext specification type
  * @author Paul Ferraro
  */
-public interface HotRodSessionManagerConfiguration {
-    ServletContext getServletContext();
+public interface HotRodSessionManagerConfiguration<C> {
+    C getServletContext();
     SessionExpirationListener getExpirationListener();
     Registrar<SessionExpirationListener> getExpirationRegistrar();
-    Scheduler getExpirationScheduler();
     IdentifierFactory<String> getIdentifierFactory();
     Batcher<TransactionBatch> getBatcher();
     Duration getStopTimeout();

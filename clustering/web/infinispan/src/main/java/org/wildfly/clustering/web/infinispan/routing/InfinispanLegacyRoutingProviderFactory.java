@@ -29,9 +29,11 @@ import org.infinispan.configuration.cache.ClusteringConfigurationBuilder;
 import org.infinispan.configuration.cache.ConfigurationBuilder;
 import org.infinispan.configuration.cache.StateTransferConfiguration;
 import org.infinispan.configuration.cache.StateTransferConfigurationBuilder;
+import org.infinispan.configuration.cache.StorageType;
 import org.infinispan.eviction.EvictionStrategy;
 import org.kohsuke.MetaInfServices;
-import org.wildfly.clustering.infinispan.spi.service.TemplateConfigurationServiceConfigurator;
+import org.wildfly.clustering.infinispan.spi.ConfigurationBuilderAttributesAccessor;
+import org.wildfly.clustering.infinispan.spi.DataContainerConfigurationBuilder;
 import org.wildfly.clustering.web.routing.LegacyRoutingProviderFactory;
 import org.wildfly.clustering.web.routing.RoutingProvider;
 
@@ -63,23 +65,21 @@ public class InfinispanLegacyRoutingProviderFactory implements LegacyRoutingProv
         ClusteringConfigurationBuilder clustering = builder.clustering();
         CacheMode mode = clustering.cacheMode();
         clustering.cacheMode(mode.needsStateTransfer() ? CacheMode.REPL_SYNC : CacheMode.LOCAL);
-        // don't use DefaultConsistentHashFactory for REPL caches (WFLY-9276)
-        clustering.hash().consistentHashFactory(null);
         clustering.l1().disable();
         // Workaround for ISPN-8722
-        AttributeSet attributes = TemplateConfigurationServiceConfigurator.getAttributes(clustering);
+        AttributeSet attributes = ConfigurationBuilderAttributesAccessor.INSTANCE.apply(clustering);
         attributes.attribute(ClusteringConfiguration.BIAS_ACQUISITION).reset();
         attributes.attribute(ClusteringConfiguration.BIAS_LIFESPAN).reset();
         attributes.attribute(ClusteringConfiguration.INVALIDATION_BATCH_SIZE).reset();
         // Ensure we use the default data container
-        builder.dataContainer().dataContainer(null);
+        builder.addModule(DataContainerConfigurationBuilder.class).evictable(null);
         // Disable expiration
         builder.expiration().lifespan(-1).maxIdle(-1);
         // Disable eviction
-        builder.memory().size(-1).evictionStrategy(EvictionStrategy.MANUAL);
+        builder.memory().storage(StorageType.HEAP).maxCount(-1).whenFull(EvictionStrategy.NONE);
         builder.persistence().clearStores();
         StateTransferConfigurationBuilder stateTransfer = clustering.stateTransfer().fetchInMemoryState(mode.needsStateTransfer());
-        attributes = TemplateConfigurationServiceConfigurator.getAttributes(stateTransfer);
+        attributes = ConfigurationBuilderAttributesAccessor.INSTANCE.apply(stateTransfer);
         attributes.attribute(StateTransferConfiguration.AWAIT_INITIAL_TRANSFER).reset();
         attributes.attribute(StateTransferConfiguration.TIMEOUT).reset();
     }

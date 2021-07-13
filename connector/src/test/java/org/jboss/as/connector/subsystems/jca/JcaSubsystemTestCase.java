@@ -71,19 +71,6 @@ public class JcaSubsystemTestCase extends AbstractSubsystemBaseTest {
     }
 
     @Override
-    protected String[] getSubsystemTemplatePaths() throws IOException {
-        return new String[] {
-                "/subsystem-templates/jca.xml"
-        };
-    }
-
-    @Test
-    @Override
-    public void testSchemaOfSubsystemTemplates() throws Exception {
-        super.testSchemaOfSubsystemTemplates();
-    }
-
-    @Override
     protected AdditionalInitialization createAdditionalInitialization() {
         return AdditionalInitialization.withCapabilities(
                 ClusteringDefaultRequirement.COMMAND_DISPATCHER_FACTORY.getName(),
@@ -167,14 +154,43 @@ public class JcaSubsystemTestCase extends AbstractSubsystemBaseTest {
         assertTrue(result.asBoolean());
     }
 
+    /** WFLY-11104 */
     @Test
-    public void testTransformerEAP62() throws Exception {
-        testTransformer(ModelTestControllerVersion.EAP_6_2_0, ModelVersion.create(1, 2, 0), "jca-full.xml");
-    }
+    public void testMultipleWorkManagers() throws Exception {
+        String xml = readResource("jca-minimal.xml");
+        final KernelServices services = createKernelServicesBuilder(createAdditionalInitialization()).setSubsystemXml(xml).build();
+        assertTrue("Subsystem boot failed!", services.isSuccessfulBoot());
+        //Get the model and the persisted xml from the first controller
+        final ModelNode model = services.readWholeModel();
 
-    @Test
-    public void testTransformerEAP62WithExpressions() throws Exception {
-        testTransformer(ModelTestControllerVersion.EAP_6_2_0, ModelVersion.create(1, 2, 0), "jca-full-expression.xml");
+        PathAddress subystem = PathAddress.pathAddress("subsystem", "jca");
+        PathAddress dwm1 = subystem.append("distributed-workmanager", "dwm1");
+        PathAddress threads1 = dwm1.append("short-running-threads","dwm1");
+        PathAddress dwm2 = subystem.append("distributed-workmanager", "dwm2");
+        PathAddress threads2 = dwm2.append("short-running-threads","dwm2");
+
+        ModelNode composite = Util.createEmptyOperation("composite", PathAddress.EMPTY_ADDRESS);
+        ModelNode steps = composite.get("steps");
+
+        ModelNode addDwm1 = Util.createAddOperation(dwm1);
+        addDwm1.get("name").set("dwm1");
+        steps.add(addDwm1);
+
+        ModelNode addThreads1 = Util.createAddOperation(threads1);
+        addThreads1.get("max-threads").set(11);
+        addThreads1.get("queue-length").set(22);
+        steps.add(addThreads1);
+
+        ModelNode addDwm2 = Util.createAddOperation(dwm2);
+        addDwm2.get("name").set("dwm2");
+        steps.add(addDwm2);
+
+        ModelNode addThreads2 = Util.createAddOperation(threads2);
+        addThreads2.get("max-threads").set(11);
+        addThreads2.get("queue-length").set(22);
+        steps.add(addThreads2);
+
+        services.executeForResult(composite);
     }
 
     @Test
@@ -289,43 +305,6 @@ public class JcaSubsystemTestCase extends AbstractSubsystemBaseTest {
                                 new FailedOperationTransformationConfig.NewAttributesConfig(ELYTRON_ENABLED.getAttribute()))
                         .addFailedAttribute(PathAddress.pathAddress(JcaSubsystemRootDefinition.PATH_SUBSYSTEM, JcaWorkManagerDefinition.PATH_WORK_MANAGER),
                                 new FailedOperationTransformationConfig.NewAttributesConfig(ELYTRON_ENABLED.getAttribute())));
-    }
-
-    /**
-     * Tests transformation of model from 1.2.0 version into 1.1.0 version.
-     *
-     * @throws Exception
-     */
-    private void testTransformerWF(ModelTestControllerVersion controllerVersion, ModelVersion modelVersion, String xmlResourceName) throws Exception {
-        // create builder for current subsystem version
-        KernelServicesBuilder builder = createKernelServicesBuilder(createAdditionalInitialization()).setSubsystemXmlResource(xmlResourceName);
-
-        // create builder for legacy subsystem version
-        builder.createLegacyKernelServicesBuilder(null, controllerVersion, modelVersion)
-                .addMavenResourceURL("org.wildfly:wildfly-connector:" + controllerVersion.getMavenGavVersion())
-                .addMavenResourceURL("org.wildfly:wildfly-threads:" + controllerVersion.getMavenGavVersion())
-                .setExtensionClassName("org.jboss.as.connector.subsystems.jca.JcaExtension")
-                .excludeFromParent(SingleClassFilter.createFilter(ConnectorLogger.class))
-                //.skipReverseControllerCheck();
-        .configureReverseControllerCheck(AdditionalInitialization.MANAGEMENT, new ModelFixer() {
-            @Override
-            public ModelNode fixModel(ModelNode modelNode) {
-                //These two are true in the original model but get removed by the transformers, so they default to false. Set them to true
-                //modelNode.get(Constants.TRACER, Constants.TRACER). add(new ModelNode(Constants.TRACER));
-                //.add(Constants.TRACER);
-                modelNode.get(Constants.TRACER, Constants.TRACER, TracerDefinition.TracerParameters.TRACER_ENABLED.getAttribute().getName()).set(true);
-                return modelNode;
-
-            }
-        });
-
-        KernelServices mainServices = builder.build();
-        KernelServices legacyServices = mainServices.getLegacyServices(modelVersion);
-        Assert.assertNotNull(legacyServices);
-        assertTrue("main services did not boot", mainServices.isSuccessfulBoot());
-        assertTrue(legacyServices.isSuccessfulBoot());
-
-        checkSubsystemModelTransformation(mainServices, modelVersion);
     }
 
     @Override

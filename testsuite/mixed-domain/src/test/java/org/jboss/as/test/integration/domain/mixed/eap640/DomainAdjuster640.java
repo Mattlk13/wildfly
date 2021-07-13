@@ -29,6 +29,7 @@ import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOC
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SOCKET_BINDING_GROUP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.SUBSYSTEM;
 import static org.jboss.as.controller.operations.common.Util.createAddOperation;
+import static org.jboss.as.controller.operations.common.Util.createOperation;
 import static org.jboss.as.controller.operations.common.Util.createRemoveOperation;
 import static org.jboss.as.controller.operations.common.Util.getUndefineAttributeOperation;
 import static org.jboss.as.controller.operations.common.Util.getWriteAttributeOperation;
@@ -108,10 +109,11 @@ public class DomainAdjuster640 extends DomainAdjuster700 {
     private List<ModelNode> adjustEe(final PathAddress subsystem) throws Exception {
         final List<ModelNode> list = new ArrayList<>();
         //Concurrency resources are not available
-        list.add(createRemoveOperation(subsystem.append("context-service", "default")));
-        list.add(createRemoveOperation(subsystem.append("managed-thread-factory", "default")));
         list.add(createRemoveOperation(subsystem.append("managed-executor-service", "default")));
         list.add(createRemoveOperation(subsystem.append("managed-scheduled-executor-service", "default")));
+        list.add(createRemoveOperation(subsystem.append("managed-thread-factory", "default")));
+        list.add(createRemoveOperation(subsystem.append("context-service", "default")));
+
         //default-bindings are not available
         list.add(createRemoveOperation(subsystem.append("service", "default-bindings")));
         return list;
@@ -155,7 +157,6 @@ public class DomainAdjuster640 extends DomainAdjuster700 {
 
         //Replace the http-remoting connector with a normal remoting-connector. This needs the remoting socket binding,
         //so add that too
-        list.add(createRemoveOperation(subsystem.append("http-connector", "http-remoting-connector")));
         ModelNode addSocketBinding =
                 createAddOperation(
                         PathAddress.pathAddress(SOCKET_BINDING_GROUP, "full-ha-sockets")
@@ -166,8 +167,24 @@ public class DomainAdjuster640 extends DomainAdjuster700 {
         addRemoting.get("socket-binding").set("remoting");
         addRemoting.get("security-realm").set("ApplicationRealm");
         list.add(addRemoting);
-        return list;
 
+        PathAddress remoteServiceAddress = subsystem.getParent().append("subsystem", "ejb3").append("service", "remote");
+
+        ModelNode listAddOperation = createOperation("list-add", remoteServiceAddress);
+        listAddOperation.get("name").set("connectors");
+        listAddOperation.get("value").set("remoting-connector");
+
+        list.add(listAddOperation);
+
+        ModelNode listRemoveOperation = createOperation("list-remove", remoteServiceAddress);
+        listRemoveOperation.get("name").set("connectors");
+        listRemoveOperation.get("value").set("http-remoting-connector");
+
+        list.add(listRemoveOperation);
+
+        list.add(createRemoveOperation(subsystem.append("http-connector", "http-remoting-connector")));
+
+        return list;
     }
 
 

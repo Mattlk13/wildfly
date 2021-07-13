@@ -21,7 +21,6 @@
  */
 package org.wildfly.clustering.server.provider;
 
-import java.security.PrivilegedAction;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -31,12 +30,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
@@ -48,7 +46,9 @@ import org.infinispan.notifications.cachelistener.annotation.CacheEntryCreated;
 import org.infinispan.notifications.cachelistener.annotation.CacheEntryModified;
 import org.infinispan.notifications.cachelistener.event.CacheEntryEvent;
 import org.infinispan.remoting.transport.Address;
-import org.jboss.threads.JBossThreadFactory;
+import org.infinispan.util.concurrent.CompletableFutures;
+import org.jboss.as.clustering.context.DefaultExecutorService;
+import org.jboss.as.clustering.context.ExecutorServiceFactory;
 import org.wildfly.clustering.Registration;
 import org.wildfly.clustering.dispatcher.Command;
 import org.wildfly.clustering.dispatcher.CommandDispatcher;
@@ -57,10 +57,6 @@ import org.wildfly.clustering.ee.Batch;
 import org.wildfly.clustering.ee.Batcher;
 import org.wildfly.clustering.ee.Invoker;
 import org.wildfly.clustering.ee.cache.CacheProperties;
-import org.wildfly.clustering.ee.cache.function.ConcurrentSetAddFunction;
-import org.wildfly.clustering.ee.cache.function.ConcurrentSetRemoveFunction;
-import org.wildfly.clustering.ee.cache.function.CopyOnWriteSetAddFunction;
-import org.wildfly.clustering.ee.cache.function.CopyOnWriteSetRemoveFunction;
 import org.wildfly.clustering.ee.infinispan.InfinispanCacheProperties;
 import org.wildfly.clustering.ee.infinispan.retry.RetryingInvoker;
 import org.wildfly.clustering.group.GroupListener;
@@ -69,9 +65,8 @@ import org.wildfly.clustering.group.Node;
 import org.wildfly.clustering.provider.ServiceProviderRegistration;
 import org.wildfly.clustering.provider.ServiceProviderRegistration.Listener;
 import org.wildfly.clustering.provider.ServiceProviderRegistry;
-import org.wildfly.clustering.server.group.Group;
 import org.wildfly.clustering.server.logging.ClusteringServerLogger;
-import org.wildfly.clustering.service.concurrent.ClassLoaderThreadFactory;
+import org.wildfly.clustering.spi.group.Group;
 import org.wildfly.common.function.ExceptionRunnable;
 import org.wildfly.security.manager.WildFlySecurityManager;
 
@@ -80,14 +75,10 @@ import org.wildfly.security.manager.WildFlySecurityManager;
  * This factory can create multiple {@link ServiceProviderRegistration} instance,
  * all of which share the same {@link Cache} instance.
  * @author Paul Ferraro
+ * @param <T> the service identifier type
  */
 @org.infinispan.notifications.Listener
 public class CacheServiceProviderRegistry<T> implements ServiceProviderRegistry<T>, GroupListener, AutoCloseable {
-
-    private static ThreadFactory createThreadFactory(Class<?> targetClass) {
-        PrivilegedAction<ThreadFactory> action = () -> new ClassLoaderThreadFactory(new JBossThreadFactory(new ThreadGroup(targetClass.getSimpleName()), Boolean.FALSE, null, "%G - %t", null, null), targetClass.getClassLoader());
-        return WildFlySecurityManager.doUnchecked(action);
-    }
 
     final Batcher<? extends Batch> batcher;
     private final ConcurrentMap<T, Map.Entry<Listener, ExecutorService>> listeners = new ConcurrentHashMap<>();
@@ -102,7 +93,7 @@ public class CacheServiceProviderRegistry<T> implements ServiceProviderRegistry<
         this.group = config.getGroup();
         this.cache = config.getCache();
         this.batcher = config.getBatcher();
-        this.dispatcher = config.getCommandDispatcherFactory().createCommandDispatcher(config.getId(), this.listeners.keySet());
+        this.dispatcher = config.getCommandDispatcherFactory().createCommandDispatcher(config.getId(), this.listeners.keySet(), WildFlySecurityManager.getClassLoaderPrivileged(this.getClass()));
         this.cache.addListener(this);
         this.groupRegistration = this.group.register(this);
         this.invoker = new RetryingInvoker(this.cache);
@@ -118,11 +109,19 @@ public class CacheServiceProviderRegistry<T> implements ServiceProviderRegistry<
         for (Map.Entry<Listener, ExecutorService> entry : this.listeners.values()) {
             ExecutorService executor = entry.getValue();
             if (executor != null) {
-                PrivilegedAction<List<Runnable>> action = () -> executor.shutdownNow();
-                WildFlySecurityManager.doUnchecked(action);
+                this.shutdown(executor);
             }
         }
         this.listeners.clear();
+    }
+
+    private void shutdown(ExecutorService executor) {
+        WildFlySecurityManager.doUnchecked(executor, DefaultExecutorService.SHUTDOWN_NOW_ACTION);
+        try {
+            executor.awaitTermination(this.cache.getCacheConfiguration().transaction().cacheStopTimeout(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Override
@@ -141,7 +140,7 @@ public class CacheServiceProviderRegistry<T> implements ServiceProviderRegistry<
         // Only create executor for new registrations
         Map.Entry<Listener, ExecutorService> entry = this.listeners.computeIfAbsent(service, key -> {
             if (listener != null) {
-                newEntry.setValue(Executors.newSingleThreadExecutor(createThreadFactory(listener.getClass())));
+                newEntry.setValue(new DefaultExecutorService(listener.getClass(), ExecutorServiceFactory.SINGLE_THREAD));
             }
             return newEntry;
         });
@@ -158,19 +157,13 @@ public class CacheServiceProviderRegistry<T> implements ServiceProviderRegistry<
         return new SimpleServiceProviderRegistration<>(service, this, () -> {
             Address localAddress = this.group.getAddress(this.group.getLocalMember());
             try (Batch batch = this.batcher.createBatch()) {
-                this.cache.getAdvancedCache().withFlags(Flag.FORCE_SYNCHRONOUS, Flag.IGNORE_RETURN_VALUES).compute(service, this.properties.isTransactional() ? new CopyOnWriteSetRemoveFunction<>(localAddress) : new ConcurrentSetRemoveFunction<>(localAddress));
+                this.cache.getAdvancedCache().withFlags(Flag.FORCE_SYNCHRONOUS, Flag.IGNORE_RETURN_VALUES).compute(service, this.properties.isTransactional() ? new CopyOnWriteAddressSetRemoveFunction(localAddress) : new ConcurrentAddressSetRemoveFunction(localAddress));
             } finally {
                 Map.Entry<Listener, ExecutorService> oldEntry = this.listeners.remove(service);
                 if (oldEntry != null) {
                     ExecutorService executor = oldEntry.getValue();
                     if (executor != null) {
-                        PrivilegedAction<List<Runnable>> action = () -> executor.shutdownNow();
-                        WildFlySecurityManager.doUnchecked(action);
-                        try {
-                            executor.awaitTermination(this.cache.getCacheConfiguration().transaction().cacheStopTimeout(), TimeUnit.MILLISECONDS);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
+                        this.shutdown(executor);
                     }
                 }
             }
@@ -184,7 +177,7 @@ public class CacheServiceProviderRegistry<T> implements ServiceProviderRegistry<
     }
 
     void register(Address address, T service) {
-        this.cache.getAdvancedCache().withFlags(Flag.FORCE_SYNCHRONOUS, Flag.IGNORE_RETURN_VALUES).compute(service, this.properties.isTransactional() ? new CopyOnWriteSetAddFunction<>(address) : new ConcurrentSetAddFunction<>(address));
+        this.cache.getAdvancedCache().withFlags(Flag.FORCE_SYNCHRONOUS, Flag.IGNORE_RETURN_VALUES).compute(service, this.properties.isTransactional() ? new CopyOnWriteAddressSetAddFunction(address) : new ConcurrentAddressSetAddFunction(address));
     }
 
     @Override
@@ -263,29 +256,31 @@ public class CacheServiceProviderRegistry<T> implements ServiceProviderRegistry<
 
     @CacheEntryCreated
     @CacheEntryModified
-    public void modified(CacheEntryEvent<T, Set<Address>> event) {
-        if (event.isPre()) return;
-        Map.Entry<Listener, ExecutorService> entry = this.listeners.get(event.getKey());
-        if (entry != null) {
-            Listener listener = entry.getKey();
-            if (listener != null) {
-                ExecutorService executor = entry.getValue();
-                Set<Node> members = new TreeSet<>();
-                for (Address address : event.getValue()) {
-                    members.add(this.group.createNode(address));
-                }
-                try {
-                    executor.submit(() -> {
-                        try {
-                            listener.providersChanged(members);
-                        } catch (Throwable e) {
-                            ClusteringServerLogger.ROOT_LOGGER.serviceProviderRegistrationListenerFailed(e, this.cache.getCacheManager().getCacheManagerConfiguration().globalJmxStatistics().cacheManagerName(), this.cache.getName(), members);
-                        }
-                    });
-                } catch (RejectedExecutionException e) {
-                    // Executor was shutdown
+    public CompletionStage<Void> modified(CacheEntryEvent<T, Set<Address>> event) {
+        if (!event.isPre()) {
+            Map.Entry<Listener, ExecutorService> entry = this.listeners.get(event.getKey());
+            if (entry != null) {
+                Listener listener = entry.getKey();
+                if (listener != null) {
+                    ExecutorService executor = entry.getValue();
+                    try {
+                        executor.submit(() -> {
+                            Set<Node> members = new TreeSet<>();
+                            for (Address address : event.getValue()) {
+                                members.add(this.group.createNode(address));
+                            }
+                            try {
+                                listener.providersChanged(members);
+                            } catch (Throwable e) {
+                                ClusteringServerLogger.ROOT_LOGGER.serviceProviderRegistrationListenerFailed(e, this.cache.getCacheManager().getCacheManagerConfiguration().cacheManagerName(), this.cache.getName(), members);
+                            }
+                        });
+                    } catch (RejectedExecutionException e) {
+                        // Executor was shutdown
+                    }
                 }
             }
         }
+        return CompletableFutures.completedNull();
     }
 }

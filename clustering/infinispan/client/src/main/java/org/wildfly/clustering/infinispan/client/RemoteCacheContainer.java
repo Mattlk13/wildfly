@@ -22,11 +22,8 @@
 
 package org.wildfly.clustering.infinispan.client;
 
-import java.util.function.Function;
-
 import org.infinispan.client.hotrod.RemoteCacheManagerAdmin;
-import org.infinispan.client.hotrod.event.impl.ClientListenerNotifier;
-import org.infinispan.client.hotrod.near.NearCacheService;
+import org.infinispan.client.hotrod.jmx.RemoteCacheManagerMXBean;
 
 /**
  * Extends Infinispan's {@link org.wildfly.clustering.infinispan.client.client.hotrod.RemoteCacheContainer} additionally exposing the name of the
@@ -35,7 +32,7 @@ import org.infinispan.client.hotrod.near.NearCacheService;
  * @author Radoslav Husar
  * @author Paul Ferraro
  */
-public interface RemoteCacheContainer extends org.infinispan.client.hotrod.RemoteCacheContainer {
+public interface RemoteCacheContainer extends org.infinispan.client.hotrod.RemoteCacheContainer, RemoteCacheManagerMXBean {
 
     interface NearCacheRegistration extends AutoCloseable {
         @Override
@@ -65,5 +62,5 @@ public interface RemoteCacheContainer extends org.infinispan.client.hotrod.Remot
      * @param factory a factory for creating a near cache
      * @return A near cache registration, which, when closed, unregisters the registered factory.
      */
-    <K, V> NearCacheRegistration registerNearCacheFactory(String cacheName, Function<ClientListenerNotifier, NearCacheService<K, V>> factory);
+    <K, V> NearCacheRegistration registerNearCacheFactory(String cacheName, NearCacheFactory<K, V> factory);
 }

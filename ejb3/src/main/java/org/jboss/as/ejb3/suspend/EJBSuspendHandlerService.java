@@ -208,10 +208,11 @@ public class EJBSuspendHandlerService implements Service<EJBSuspendHandlerServic
         final int activeInvocationCount = activeInvocationCountUpdater.get(this);
         if (activeInvocationCount == 0) {
             if (gracefulTxnShutdown) {
-                if (activeTransactionCountUpdater.get(this) == 0) {
+                final int activeTransactionCountUpdaterAtShutdown = activeTransactionCountUpdater.get(this);
+                if (activeTransactionCountUpdaterAtShutdown == 0) {
                     this.doneSuspended();
                 } else {
-                    EjbLogger.ROOT_LOGGER.suspensionWaitingActiveTransactions(activeInvocationCount);
+                    EjbLogger.ROOT_LOGGER.suspensionWaitingActiveTransactions(activeTransactionCountUpdaterAtShutdown);
                 }
             } else {
                 this.doneSuspended();
@@ -302,9 +303,9 @@ public class EJBSuspendHandlerService implements Service<EJBSuspendHandlerServic
     }
 
     /**
-     * Indicates if ejb subsystem is suspended.
+     * Indicates if Jakarta Enterprise Beans subsystem is suspended.
      *
-     * @return {@code true} if ejb susbsystem suspension is started (regardless of whether it completed or not)
+     * @return {@code true} if Jakarta Enterprise Beans susbsystem suspension is started (regardless of whether it completed or not)
      */
     public boolean isSuspended() {
         return suspended;

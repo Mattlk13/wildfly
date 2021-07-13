@@ -23,6 +23,8 @@
 package org.jboss.as.ejb3.deployment.processors;
 
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.jboss.as.ee.component.Attachments;
 import org.jboss.as.ee.component.BindingConfiguration;
@@ -38,6 +40,7 @@ import org.jboss.as.ejb3.component.EJBViewDescription;
 import org.jboss.as.ejb3.component.MethodIntf;
 import org.jboss.as.ejb3.component.session.SessionBeanComponentDescription;
 import org.jboss.as.ejb3.remote.RemoteViewInjectionSource;
+import org.jboss.as.ejb3.remote.RemoteViewManagedReferenceFactory;
 import org.jboss.as.naming.ManagedReference;
 import org.jboss.as.naming.ManagedReferenceFactory;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
@@ -72,18 +75,26 @@ public class EjbJndiBindingsDeploymentUnitProcessor implements DeploymentUnitPro
     @Override
     public void deploy(DeploymentPhaseContext phaseContext) throws DeploymentUnitProcessingException {
         final DeploymentUnit deploymentUnit = phaseContext.getDeploymentUnit();
-        // Only process EJB deployments
+        // Only process Jakarta Enterprise Beans deployments
         if (!EjbDeploymentMarker.isEjbDeployment(deploymentUnit)) {
             return;
         }
 
         final EEModuleDescription eeModuleDescription = deploymentUnit.getAttachment(Attachments.EE_MODULE_DESCRIPTION);
         final Collection<ComponentDescription> componentDescriptions = eeModuleDescription.getComponentDescriptions();
+        Map<String, SessionBeanComponentDescription> sessionBeanComponentDescriptions = new HashMap<>();
         if (componentDescriptions != null) {
             for (ComponentDescription componentDescription : componentDescriptions) {
-                // process only EJB session beans
+                // process only Jakarta Enterprise Beans session beans
                 if (componentDescription instanceof SessionBeanComponentDescription) {
-                    this.setupJNDIBindings((EJBComponentDescription) componentDescription, deploymentUnit);
+                    SessionBeanComponentDescription sessionBeanComponentDescription = (SessionBeanComponentDescription) componentDescription;
+                    String ejbClassName = sessionBeanComponentDescription.getEJBClassName();
+                    SessionBeanComponentDescription existingDescription = sessionBeanComponentDescriptions.putIfAbsent(ejbClassName, sessionBeanComponentDescription);
+                    if ((existingDescription == null) || existingDescription.getSessionBeanType() == sessionBeanComponentDescription.getSessionBeanType()) {
+                        this.setupJNDIBindings(sessionBeanComponentDescription, deploymentUnit);
+                    } else {
+                        EjbLogger.DEPLOYMENT_LOGGER.typeSpecViolation(ejbClassName);
+                    }
                 }
             }
         }
@@ -108,8 +119,8 @@ public class EjbJndiBindingsDeploymentUnitProcessor implements DeploymentUnitPro
             return;
         }
 
-        // In case of EJB bindings, appname == .ear file name/application-name set in the application.xml (if it's an .ear deployment)
-        // NOTE: Do NOT use the app name from the EEModuleDescription.getApplicationName() because the Java EE spec has a different and conflicting meaning for app name
+        // In case of Jakarta Enterprise Beans bindings, appname == .ear file name/application-name set in the application.xml (if it's an .ear deployment)
+        // NOTE: Do NOT use the app name from the EEModuleDescription.getApplicationName() because the Jakarta EE spec has a different and conflicting meaning for app name
         // (where app name == module name in the absence of a .ear). Use EEModuleDescription.getEarApplicationName() instead
         final String applicationName = sessionBean.getModuleDescription().getEarApplicationName();
         final String distinctName = sessionBean.getModuleDescription().getDistinctName(); // default to empty string
@@ -126,10 +137,15 @@ public class EjbJndiBindingsDeploymentUnitProcessor implements DeploymentUnitPro
         // now create the bindings for each view under the java:global, java:app and java:module namespaces
         EJBViewDescription ejbViewDescription = null;
         for (ViewDescription viewDescription : views) {
+            boolean isEjbNamespaceBindingBaseName = false;
             ejbViewDescription = (EJBViewDescription) viewDescription;
             if (appclient && ejbViewDescription.getMethodIntf() != MethodIntf.REMOTE && ejbViewDescription.getMethodIntf() != MethodIntf.HOME) {
                 continue;
             }
+            if (ejbViewDescription.getMethodIntf() != MethodIntf.REMOTE) {
+                isEjbNamespaceBindingBaseName = true;
+            }
+
             if (!ejbViewDescription.hasJNDIBindings()) continue;
 
             final String viewClassName = ejbViewDescription.getViewClassName();
@@ -160,13 +176,17 @@ public class EjbJndiBindingsDeploymentUnitProcessor implements DeploymentUnitPro
                 logBinding(jndiBindingsLogMessage, remoteJNDIName);
             }
 
-            // log EJB's ejb:/ namespace binding
-            final String ejbNamespaceBindingName = sessionBean.isStateful() ? ejbNamespaceBindingBaseName + "!" + viewClassName + "?stateful" : ejbNamespaceBindingBaseName + "!" + viewClassName;
-            logBinding(jndiBindingsLogMessage, ejbNamespaceBindingName);
+            // log Jakarta Enterprise Beans's ejb:/ namespace binding
+            final String ejbNamespaceBindingName =  sessionBean.isStateful() ? ejbNamespaceBindingBaseName + "!" + viewClassName + "?stateful" : ejbNamespaceBindingBaseName + "!" + viewClassName;
+
+            if(!isEjbNamespaceBindingBaseName){
+                logBinding(jndiBindingsLogMessage, ejbNamespaceBindingName);
+            }
+
 
         }
 
-        // EJB3.1 spec, section 4.4.1 Global JNDI Access states:
+        //  Enterprise Beans 3.1 spec, section 4.4.1 Global JNDI Access states:
         // In addition to the previous requirements, if the bean exposes only one of the
         // applicable client interfaces(or alternatively has only a no-interface view), the container
         // registers an entry for that view with the following syntax :
@@ -235,7 +255,7 @@ public class EjbJndiBindingsDeploymentUnitProcessor implements DeploymentUnitPro
             public void getResourceValue(ResolutionContext resolutionContext, ServiceBuilder<?> serviceBuilder, DeploymentPhaseContext phaseContext, Injector<ManagedReferenceFactory> injector) throws DeploymentUnitProcessingException {
                 final InjectedValue<ManagedReferenceFactory> delegateInjection = new InjectedValue<>();
                 delegate.getResourceValue(resolutionContext, serviceBuilder, phaseContext, delegateInjection);
-                injector.inject(new ManagedReferenceFactory() {
+                injector.inject(new RemoteViewManagedReferenceFactory(moduleDescription.getEarApplicationName(), moduleDescription.getModuleName(), moduleDescription.getDistinctName(), componentDescription.getComponentName(), viewDescription.getViewClassName(), componentDescription.isStateful(), viewClassLoader, appclient) {
                     @Override
                     public ManagedReference getReference() {
                         ControlPoint cp = controlPointInjectedValue.getValue();

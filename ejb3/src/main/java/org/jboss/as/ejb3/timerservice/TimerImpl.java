@@ -30,13 +30,13 @@ import javax.ejb.ScheduleExpression;
 import javax.ejb.Timer;
 import javax.ejb.TimerHandle;
 
-import org.jboss.as.ejb3.logging.EjbLogger;
 import org.jboss.as.ejb3.component.allowedmethods.AllowedMethodsInformation;
 import org.jboss.as.ejb3.component.allowedmethods.MethodType;
+import org.jboss.as.ejb3.logging.EjbLogger;
 import org.jboss.as.ejb3.timerservice.spi.TimedObjectInvoker;
 
 /**
- * Implementation of EJB3.1 {@link Timer}
+ * Implementation of Enterprise Beans 3.1 {@link Timer}
  *
  * @author <a href="mailto:cdewolf@redhat.com">Carlo de Wolf</a>
  * @version $Revision: $
@@ -197,9 +197,9 @@ public class TimerImpl implements Timer {
         // make sure it's in correct state
         this.assertTimerState();
 
-        // for non-persistent timers throws an exception (mandated by EJB3 spec)
+        // for non-persistent timers throws an exception (mandated by Enterprise Beans 3 spec)
         if (this.persistent == false) {
-            throw EjbLogger.EJB3_TIMER_LOGGER.invalidTimerHandlersForPersistentTimers("EJB3.1 Spec 18.2.6");
+            throw EjbLogger.EJB3_TIMER_LOGGER.invalidTimerHandlersForPersistentTimers("Enterprise Beans 3.1 Spec 18.2.6");
         }
         return this.handle;
     }
@@ -473,9 +473,9 @@ public class TimerImpl implements Timer {
      */
     protected void assertTimerState() {
         if (timerState == TimerState.EXPIRED)
-            throw EjbLogger.EJB3_TIMER_LOGGER.timerHasExpired();
+            throw EjbLogger.EJB3_TIMER_LOGGER.timerHasExpired(id);
         if (timerState == TimerState.CANCELED)
-            throw EjbLogger.EJB3_TIMER_LOGGER.timerWasCanceled();
+            throw EjbLogger.EJB3_TIMER_LOGGER.timerWasCanceled(id);
         AllowedMethodsInformation.checkAllowed(MethodType.TIMER_SERVICE_METHOD);
     }
 
@@ -599,6 +599,8 @@ public class TimerImpl implements Timer {
             sb.append(this.persistent);
             sb.append(" timerService=");
             sb.append(this.timerService);
+            sb.append(" previousRun=");
+            sb.append(this.previousRun);
             sb.append(" initialExpiration=");
             sb.append(this.initialExpiration);
             sb.append(" intervalDuration(in milli sec)=");

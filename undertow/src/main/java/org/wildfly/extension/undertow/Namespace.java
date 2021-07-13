@@ -44,12 +44,16 @@ enum Namespace {
     UNDERTOW_6_0("urn:jboss:domain:undertow:6.0"),
     UNDERTOW_7_0("urn:jboss:domain:undertow:7.0"),
     UNDERTOW_8_0("urn:jboss:domain:undertow:8.0"),
-    UNDERTOW_9_0("urn:jboss:domain:undertow:9.0");
+    UNDERTOW_9_0("urn:jboss:domain:undertow:9.0"),
+    UNDERTOW_10_0("urn:jboss:domain:undertow:10.0"),
+    UNDERTOW_11_0("urn:jboss:domain:undertow:11.0"),
+    UNDERTOW_12_0("urn:jboss:domain:undertow:12.0"),
+    ;
 
     /**
      * The current namespace version.
      */
-    public static final Namespace CURRENT = UNDERTOW_9_0;
+    public static final Namespace CURRENT = UNDERTOW_12_0;
 
     private final String name;
 

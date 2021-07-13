@@ -1,6 +1,6 @@
 /*
  * JBoss, Home of Professional Open Source.
- * Copyright 2010, Red Hat, Inc., and individual contributors
+ * Copyright 2021, Red Hat, Inc., and individual contributors
  * as indicated by the @author tags. See the copyright.txt file in the
  * distribution for a full listing of individual contributors.
  *
@@ -22,10 +22,8 @@
 
 package org.jboss.as.ee.managedbean.processors;
 
-import static org.jboss.as.ee.subsystem.EeSubsystemRootResource.ECLIPSE_YASSON;
 import static org.jboss.as.ee.subsystem.EeSubsystemRootResource.GLASSFISH_EL;
 import static org.jboss.as.ee.subsystem.EeSubsystemRootResource.JSON_API;
-import static org.jboss.as.ee.subsystem.EeSubsystemRootResource.JSON_BIND_API;
 import static org.jboss.as.ee.subsystem.EeSubsystemRootResource.WILDFLY_NAMING;
 import org.jboss.as.server.deployment.Attachments;
 import org.jboss.as.server.deployment.DeploymentPhaseContext;
@@ -40,7 +38,7 @@ import org.jboss.modules.ModuleLoader;
 import org.jboss.modules.filter.PathFilters;
 
 /**
- * Deployment processor which adds the java EE APIs to EE deployments
+ * Deployment processor which adds the Jakarta EE APIs to EE deployments
  * <p/>
  *
  * @author John E. Bailey
@@ -57,13 +55,13 @@ public class JavaEEDependencyProcessor implements DeploymentUnitProcessor {
             ModuleIdentifier.create("javax.enterprise.concurrent.api"),
             ModuleIdentifier.create("javax.interceptor.api"),
             ModuleIdentifier.create(JSON_API),
-            ModuleIdentifier.create(JSON_BIND_API),
+            ModuleIdentifier.create("javax.json.bind.api"),
             ModuleIdentifier.create("javax.resource.api"),
             ModuleIdentifier.create("javax.rmi.api"),
             ModuleIdentifier.create("javax.xml.bind.api"),
             ModuleIdentifier.create("javax.api"),
-            // javax.json.bind.api (JSON-B) implementation
-            ModuleIdentifier.create(ECLIPSE_YASSON),
+            // (Jakarta JSON Binding) implementation
+            ModuleIdentifier.create("org.eclipse.yasson"),
             ModuleIdentifier.create(GLASSFISH_EL),
             ModuleIdentifier.create("org.glassfish.javax.enterprise.concurrent")
     };
@@ -98,7 +96,7 @@ public class JavaEEDependencyProcessor implements DeploymentUnitProcessor {
         // add dep for naming permission
         moduleSpecification.addSystemDependency(new ModuleDependency(moduleLoader, ModuleIdentifier.create(WILDFLY_NAMING), false, false, false, false));
 
-        //we always add all Java EE API modules, as the platform spec requires them to always be available
+        //we always add all Jakarta EE API modules, as the platform spec requires them to always be available
         //we do not just add the javaee.api module, as this breaks excludes
 
         for (final ModuleIdentifier moduleIdentifier : JAVA_EE_API_MODULES) {

@@ -64,17 +64,51 @@ public class EeSubsystemTestCase extends AbstractSubsystemBaseTest {
 
     @Override
     protected String getSubsystemXsdPath() throws Exception {
-        return "schema/jboss-as-ee_4_0.xsd";
+        return "schema/jboss-as-ee_6_0.xsd";
+    }
+
+    @Override
+    protected AdditionalInitialization createAdditionalInitialization() {
+        return AdditionalInitialization.withCapabilities(EeCapabilities.PATH_MANAGER_CAPABILITY);
     }
 
     @Test
-    public void testTransformersEAP620() throws Exception {
-        testTransformers1_1(ModelTestControllerVersion.EAP_6_2_0, ModelVersion.create(1,0));
+    public void testTransformers5_0() throws Exception {
+        final ModelTestControllerVersion controllerVersion = ModelTestControllerVersion.EAP_7_2_0;
+        final ModelVersion legacyVersion = ModelVersion.create(4,0);
+        final KernelServicesBuilder builder = createKernelServicesBuilder(createAdditionalInitialization());
+        final List<ModelNode> xmlOps = builder.parseXml(readResource("subsystem_5_0.xml"));
+        builder.createLegacyKernelServicesBuilder(null, controllerVersion, legacyVersion)
+                .addMavenResourceURL(controllerVersion.getMavenGroupId() + ":wildfly-ee:" + controllerVersion.getMavenGavVersion());
+        final KernelServices mainServices = builder.build();
+        Assert.assertTrue(mainServices.isSuccessfulBoot());
+        final FailedOperationTransformationConfig config =  new FailedOperationTransformationConfig()
+                .addFailedAttribute(PathAddress.pathAddress(EeExtension.PATH_SUBSYSTEM, PathElement.pathElement(EESubsystemModel.MANAGED_EXECUTOR_SERVICE)),
+                        new FailedOperationTransformationConfig.NewAttributesConfig(ManagedExecutorServiceResourceDefinition.THREAD_PRIORITY_AD))
+                .addFailedAttribute(PathAddress.pathAddress(EeExtension.PATH_SUBSYSTEM, PathElement.pathElement(EESubsystemModel.MANAGED_SCHEDULED_EXECUTOR_SERVICE)),
+                        new FailedOperationTransformationConfig.NewAttributesConfig(ManagedScheduledExecutorServiceResourceDefinition.THREAD_PRIORITY_AD))
+                .addFailedAttribute(PathAddress.pathAddress(EeExtension.PATH_SUBSYSTEM, PathElement.pathElement(EESubsystemModel.GLOBAL_DIRECTORY)), REJECTED_RESOURCE);
+
+        ModelTestUtils.checkFailedTransformedBootOperations(mainServices, legacyVersion, xmlOps, config);
     }
 
     @Test
-    public void testTransformersEAP630() throws Exception {
-        testTransformers1_1(ModelTestControllerVersion.EAP_6_3_0, ModelVersion.create(1,1));
+    public void testTransformers6_0() throws Exception {
+        final ModelTestControllerVersion controllerVersion = ModelTestControllerVersion.MASTER;
+        final ModelVersion legacyVersion = ModelVersion.create(5,0);
+        final KernelServicesBuilder builder = createKernelServicesBuilder(createAdditionalInitialization());
+        final List<ModelNode> xmlOps = builder.parseXml(readResource("subsystem.xml"));
+        builder.createLegacyKernelServicesBuilder(null, controllerVersion, legacyVersion)
+                .addMavenResourceURL(controllerVersion.getMavenGroupId() + ":wildfly-ee:" + controllerVersion.getMavenGavVersion());
+        final KernelServices mainServices = builder.build();
+        Assert.assertTrue(mainServices.isSuccessfulBoot());
+        final FailedOperationTransformationConfig config =  new FailedOperationTransformationConfig()
+                .addFailedAttribute(PathAddress.pathAddress(EeExtension.PATH_SUBSYSTEM, PathElement.pathElement(EESubsystemModel.MANAGED_EXECUTOR_SERVICE)),
+                        new FailedOperationTransformationConfig.NewAttributesConfig(ManagedExecutorServiceResourceDefinition.HUNG_TASK_TERMINATION_PERIOD_AD))
+                .addFailedAttribute(PathAddress.pathAddress(EeExtension.PATH_SUBSYSTEM, PathElement.pathElement(EESubsystemModel.MANAGED_SCHEDULED_EXECUTOR_SERVICE)),
+                        new FailedOperationTransformationConfig.NewAttributesConfig(ManagedScheduledExecutorServiceResourceDefinition.HUNG_TASK_TERMINATION_PERIOD_AD));
+
+        ModelTestUtils.checkFailedTransformedBootOperations(mainServices, legacyVersion, xmlOps, config);
     }
 
     @Test
@@ -99,16 +133,6 @@ public class EeSubsystemTestCase extends AbstractSubsystemBaseTest {
         Assert.assertTrue(legacyServices.isSuccessfulBoot());
 
         checkSubsystemModelTransformation(mainServices, modelVersion);
-    }
-
-    @Test
-    public void testTransformersEAP620Reject() throws Exception {
-        testTransformers1_0_x_reject(ModelTestControllerVersion.EAP_6_2_0, ModelVersion.create(1,0));
-    }
-
-    @Test
-    public void testTransformersEAP630Reject() throws Exception {
-        testTransformers1_1_x_reject(ModelTestControllerVersion.EAP_6_3_0);
     }
 
     @Test
@@ -156,7 +180,7 @@ public class EeSubsystemTestCase extends AbstractSubsystemBaseTest {
     private void testTransformers1_1_x_reject(ModelTestControllerVersion controllerVersion) throws Exception {
             String subsystemXml = readResource("subsystem.xml");
             //Use the non-runtime version of the extension which will happen on the HC
-            KernelServicesBuilder builder = createKernelServicesBuilder(AdditionalInitialization.MANAGEMENT);
+            KernelServicesBuilder builder = createKernelServicesBuilder(createAdditionalInitialization());
 
             List<ModelNode> xmlOps = builder.parseXml(subsystemXml);
 
@@ -172,21 +196,11 @@ public class EeSubsystemTestCase extends AbstractSubsystemBaseTest {
             .addFailedAttribute(PathAddress.pathAddress(EeExtension.PATH_SUBSYSTEM, PathElement.pathElement(EESubsystemModel.CONTEXT_SERVICE)), REJECTED_RESOURCE)
             .addFailedAttribute(PathAddress.pathAddress(EeExtension.PATH_SUBSYSTEM, PathElement.pathElement(EESubsystemModel.MANAGED_THREAD_FACTORY)), REJECTED_RESOURCE)
             .addFailedAttribute(PathAddress.pathAddress(EeExtension.PATH_SUBSYSTEM, PathElement.pathElement(EESubsystemModel.MANAGED_EXECUTOR_SERVICE)), REJECTED_RESOURCE)
-            .addFailedAttribute(PathAddress.pathAddress(EeExtension.PATH_SUBSYSTEM, PathElement.pathElement(EESubsystemModel.MANAGED_SCHEDULED_EXECUTOR_SERVICE)), REJECTED_RESOURCE);
+            .addFailedAttribute(PathAddress.pathAddress(EeExtension.PATH_SUBSYSTEM, PathElement.pathElement(EESubsystemModel.MANAGED_SCHEDULED_EXECUTOR_SERVICE)), REJECTED_RESOURCE)
+            .addFailedAttribute(PathAddress.pathAddress(EeExtension.PATH_SUBSYSTEM, PathElement.pathElement(EESubsystemModel.GLOBAL_DIRECTORY)), REJECTED_RESOURCE);
 
             ModelTestUtils.checkFailedTransformedBootOperations(mainServices, modelVersion, xmlOps, config);
         }
-
-
-    @Test
-    public void testTransformersDiscardsImpliedValuesEAP620() throws Exception {
-        testTransformersDiscardsImpliedValues1_0_0(ModelTestControllerVersion.EAP_6_2_0);
-    }
-
-    @Test
-    public void testTransformersDiscardsImpliedValuesEAP630() throws Exception {
-        testTransformersDiscardsImpliedValues1_1_0(ModelTestControllerVersion.EAP_6_3_0);
-    }
 
     @Test
     public void testTransformersDiscardsImpliedValuesEAP640() throws Exception {

@@ -22,7 +22,6 @@
 
 package org.wildfly.clustering.web.infinispan.routing;
 
-import java.util.AbstractMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -50,13 +49,13 @@ public class RouteRegistryEntryProviderServiceConfigurator extends SimpleService
     private final SupplierDependency<String> route;
 
     public RouteRegistryEntryProviderServiceConfigurator(String containerName, String serverName) {
-        super(ServiceNameFactory.parseServiceName(ClusteringCacheRequirement.REGISTRY_ENTRY.resolve(containerName, serverName)));
-        this.route = new ServiceSupplierDependency<>(ServiceNameFactory.parseServiceName(WebDeploymentRequirement.LOCAL_ROUTE.resolve(serverName)));
+        super(ServiceNameFactory.parseServiceName(ClusteringCacheRequirement.REGISTRY_ENTRY.getName()).append(containerName, serverName));
+        this.route = new ServiceSupplierDependency<>(ServiceNameFactory.parseServiceName(WebDeploymentRequirement.LOCAL_ROUTE.getName()).append(serverName));
     }
 
     @Override
     public Map.Entry<String, Void> apply(String route) {
-        return new AbstractMap.SimpleImmutableEntry<>(route, null);
+        return new RouteRegistryEntry(route);
     }
 
     @Override

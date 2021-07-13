@@ -21,10 +21,13 @@
  */
 package org.jboss.as.security;
 
+import java.security.Policy;
+
 import javax.security.auth.login.Configuration;
 import javax.transaction.TransactionManager;
 
 import org.jboss.as.controller.AbstractBoottimeAddStepHandler;
+import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.OperationContext;
 import org.jboss.as.controller.OperationFailedException;
 import org.jboss.as.controller.OperationStepHandler;
@@ -36,15 +39,16 @@ import org.jboss.as.controller.SimpleAttributeDefinitionBuilder;
 import org.jboss.as.controller.SimpleResourceDefinition;
 import org.jboss.as.controller.access.constraint.SensitivityClassification;
 import org.jboss.as.controller.access.management.SensitiveTargetAccessConstraintDefinition;
+import org.jboss.as.controller.capability.CapabilityServiceSupport;
 import org.jboss.as.controller.capability.RuntimeCapability;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
+import org.jboss.as.controller.registry.Resource;
 import org.jboss.as.controller.registry.RuntimePackageDependency;
 import org.jboss.as.core.security.ServerSecurityManager;
 import org.jboss.as.naming.ServiceBasedNamingStore;
 import org.jboss.as.naming.deployment.ContextNames;
 import org.jboss.as.naming.service.BinderService;
 import org.jboss.as.security.context.SecurityDomainJndiInjectable;
-import org.jboss.as.security.deployment.JaccEarDeploymentProcessor;
 import org.jboss.as.security.deployment.SecurityDependencyProcessor;
 import org.jboss.as.security.deployment.SecurityEnablementProcessor;
 import org.jboss.as.security.logging.SecurityLogger;
@@ -90,6 +94,12 @@ public class SecuritySubsystemRootResourceDefinition extends SimpleResourceDefin
     private static final RuntimeCapability<Void> SUBJECT_FACTORY_CAP = RuntimeCapability.Builder.of("org.wildfly.legacy-security.subject-factory")
             .setServiceType(SubjectFactory.class)
             .build();
+    private static final RuntimeCapability<Void> JACC_CAPABILITY = RuntimeCapability.Builder.of("org.wildfly.legacy-security.jacc")
+            .setServiceType(Policy.class)
+            .build();
+    private static final RuntimeCapability<Void> JACC_CAPABILITY_TOMBSTONE = RuntimeCapability.Builder.of("org.wildfly.legacy-security.jacc.tombstone")
+       .setServiceType(Void.class)
+       .build();
 
     private static final SensitiveTargetAccessConstraintDefinition MISC_SECURITY_SENSITIVITY = new SensitiveTargetAccessConstraintDefinition(
             new SensitivityClassification(SecurityExtension.SUBSYSTEM_NAME, "misc-security", false, true, true));
@@ -103,6 +113,7 @@ public class SecuritySubsystemRootResourceDefinition extends SimpleResourceDefin
                     .build();
     static final SimpleAttributeDefinition INITIALIZE_JACC = new SimpleAttributeDefinitionBuilder(Constants.INITIALIZE_JACC, ModelType.BOOLEAN, true)
             .setDefaultValue(ModelNode.TRUE)
+            .setRestartJVM()
             .setAllowExpression(true)
             .build();
 
@@ -110,7 +121,15 @@ public class SecuritySubsystemRootResourceDefinition extends SimpleResourceDefin
         super(new Parameters(SecurityExtension.PATH_SUBSYSTEM,
                 SecurityExtension.getResourceDescriptionResolver(SecurityExtension.SUBSYSTEM_NAME))
                 .setAddHandler(SecuritySubsystemAdd.INSTANCE)
-                .setRemoveHandler(ReloadRequiredRemoveStepHandler.INSTANCE)
+                .setRemoveHandler(new ReloadRequiredRemoveStepHandler() {
+
+                    @Override
+                    protected void recordCapabilitiesAndRequirements(OperationContext context, ModelNode operation,
+                            Resource resource) throws OperationFailedException {
+                        super.recordCapabilitiesAndRequirements(context, operation, resource);
+                        context.deregisterCapability(JACC_CAPABILITY.getName());
+                    }
+                })
                 .setCapabilities(SECURITY_SUBSYSTEM, SERVER_SECURITY_MANAGER, SUBJECT_FACTORY_CAP));
         setDeprecated(SecurityExtension.DEPRECATED_SINCE);
     }
@@ -118,7 +137,45 @@ public class SecuritySubsystemRootResourceDefinition extends SimpleResourceDefin
     @Override
     public void registerAttributes(final ManagementResourceRegistration resourceRegistration) {
          resourceRegistration.registerReadWriteAttribute(DEEP_COPY_SUBJECT_MODE, null, new ReloadRequiredWriteAttributeHandler(DEEP_COPY_SUBJECT_MODE));
-        resourceRegistration.registerReadWriteAttribute(INITIALIZE_JACC, null, new ReloadRequiredWriteAttributeHandler(INITIALIZE_JACC));
+        resourceRegistration.registerReadWriteAttribute(INITIALIZE_JACC, null, new ReloadRequiredWriteAttributeHandler(INITIALIZE_JACC) {
+            @Override
+            protected boolean applyUpdateToRuntime(OperationContext context, ModelNode operation, String attributeName, ModelNode resolvedValue, ModelNode currentValue, HandbackHolder<Void> voidHandback) throws OperationFailedException {
+                // As the PolicyConfigurationFactory is a singleton, once it's initialized any changes will require a restart
+                CapabilityServiceSupport capabilitySupport = context.getCapabilityServiceSupport();
+                final boolean elytronJacc = capabilitySupport.hasCapability("org.wildfly.security.jacc-policy");
+                if (resolvedValue.asBoolean() == true && elytronJacc) {
+                    throw SecurityLogger.ROOT_LOGGER.unableToEnableJaccSupport();
+                }
+                return super.applyUpdateToRuntime(context, operation, attributeName, resolvedValue, currentValue, voidHandback);
+            }
+
+             @Override
+            protected void recordCapabilitiesAndRequirements(OperationContext context,
+                                                             AttributeDefinition attributeDefinition,
+                                                             ModelNode newValue,
+                                                             ModelNode oldValue) {
+                super.recordCapabilitiesAndRequirements(context, attributeDefinition, newValue, oldValue);
+
+                boolean shouldRegister = resolveValue(context, attributeDefinition, newValue);
+                boolean registered = resolveValue(context, attributeDefinition, oldValue);
+
+                if (!shouldRegister) {
+                    context.deregisterCapability(JACC_CAPABILITY.getName());
+                }
+                if (!registered && shouldRegister) {
+                    context.registerCapability(JACC_CAPABILITY);
+                    // do not register the JACC_CAPABILITY_TOMBSTONE at this point - it will be registered on restart
+                }
+            }
+
+            private boolean resolveValue(OperationContext context, AttributeDefinition attributeDefinition, ModelNode node) {
+                try {
+                    return attributeDefinition.resolveValue(context, node).asBoolean();
+                } catch (OperationFailedException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+        });
     }
 
     private static class SecuritySubsystemAdd extends AbstractBoottimeAddStepHandler {
@@ -152,6 +209,19 @@ public class SecuritySubsystemRootResourceDefinition extends SimpleResourceDefin
         }
 
         @Override
+        protected void recordCapabilitiesAndRequirements(OperationContext context, ModelNode operation, Resource resource)
+                throws OperationFailedException {
+            super.recordCapabilitiesAndRequirements(context, operation, resource);
+            if (INITIALIZE_JACC.resolveModelAttribute(context, resource.getModel()).asBoolean()) {
+                context.registerCapability(JACC_CAPABILITY);
+                // tombstone marks the Policy being initiated and should not be removed until restart
+                if (context.isBooting()) {
+                    context.registerCapability(JACC_CAPABILITY_TOMBSTONE);
+                }
+            }
+        }
+
+        @Override
         protected void performBoottime(OperationContext context, ModelNode operation, ModelNode model) throws OperationFailedException {
             SecurityLogger.ROOT_LOGGER.activatingSecuritySubsystem();
 
@@ -162,9 +232,13 @@ public class SecuritySubsystemRootResourceDefinition extends SimpleResourceDefin
             final ServiceTarget target = context.getServiceTarget();
             ModelNode initializeJaccNode = SecuritySubsystemRootResourceDefinition.INITIALIZE_JACC.resolveModelAttribute(context,model);
             final SecurityBootstrapService bootstrapService = new SecurityBootstrapService(initializeJaccNode.asBoolean());
-            target.addService(SecurityBootstrapService.SERVICE_NAME, bootstrapService)
+            ServiceBuilder<Void> builder = target.addService(SecurityBootstrapService.SERVICE_NAME, bootstrapService)
                 .addDependency(Services.JBOSS_SERVICE_MODULE_LOADER, ServiceModuleLoader.class, bootstrapService.getServiceModuleLoaderInjectedValue())
-                .setInitialMode(ServiceController.Mode.ACTIVE).install();
+                .setInitialMode(ServiceController.Mode.ACTIVE);
+            if (initializeJaccNode.asBoolean()) {
+                builder.addAliases(context.getCapabilityServiceName(JACC_CAPABILITY.getName(), Policy.class));
+            }
+            builder.install();
 
             // add service to bind SecurityDomainJndiInjectable to JNDI
             final SecurityDomainJndiInjectable securityDomainJndiInjectable = new SecurityDomainJndiInjectable();
@@ -221,8 +295,6 @@ public class SecuritySubsystemRootResourceDefinition extends SimpleResourceDefin
             context.addStep(new AbstractDeploymentChainStep() {
                 @Override
                 protected void execute(DeploymentProcessorTarget processorTarget) {
-                    processorTarget.addDeploymentProcessor(SecurityExtension.SUBSYSTEM_NAME, Phase.INSTALL, Phase.INSTALL_JACC_POLICY,
-                            new JaccEarDeploymentProcessor());
                     processorTarget.addDeploymentProcessor(SecurityExtension.SUBSYSTEM_NAME, Phase.DEPENDENCIES, Phase.DEPENDENCIES_SECURITY,
                             new SecurityDependencyProcessor());
                     processorTarget.addDeploymentProcessor(SecurityExtension.SUBSYSTEM_NAME, Phase.PARSE, 0x0080,

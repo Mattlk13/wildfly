@@ -61,8 +61,12 @@ class MicroProfileHealthSubsystemAdd extends AbstractBoottimeAddStepHandler {
         }, RUNTIME);
 
         final boolean securityEnabled = MicroProfileHealthSubsystemDefinition.SECURITY_ENABLED.resolveModelAttribute(context, model).asBoolean();
-        HealthReporterService.install(context);
-        HealthContextService.install(context, securityEnabled);
+        final String emptyLivenessChecksStatus = MicroProfileHealthSubsystemDefinition.EMPTY_LIVENESS_CHECKS_STATUS.resolveModelAttribute(context, model).asString();
+        final String emptyReadinessChecksStatus = MicroProfileHealthSubsystemDefinition.EMPTY_READINESS_CHECKS_STATUS.resolveModelAttribute(context, model).asString();
+
+        HealthHTTPSecurityService.install(context, securityEnabled);
+        MicroProfileHealthReporterService.install(context, emptyLivenessChecksStatus, emptyReadinessChecksStatus);
+        MicroProfileHealthContextService.install(context);
 
         MicroProfileHealthLogger.LOGGER.activatingSubsystem();
     }

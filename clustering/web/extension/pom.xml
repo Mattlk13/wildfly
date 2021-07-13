@@ -33,13 +33,16 @@
         Maintain separation between the artifact id and the version to help prevent
         merge conflicts between commits changing the GA and those changing the V.
         -->
-        <version>18.0.0.Beta1-SNAPSHOT</version>
+        <version>25.0.0.Beta1-SNAPSHOT</version>
     </parent>
 
     <artifactId>wildfly-clustering-web-extension</artifactId>
     <packaging>jar</packaging>
 
     <name>WildFly: Distributable Web Subsystem</name>
+    <description>
+        Installs an extension that provides the distributable-web subsystem, that defines a set of profiles for use by distributable web applications.
+    </description>
 
     <dependencies>
         <dependency>

@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -52,6 +53,7 @@ import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 import javax.sql.DataSource;
 import javax.transaction.HeuristicMixedException;
@@ -134,6 +136,8 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
     private static final String UPDATE_RUNNING = "update-running";
     /** The format for scheduler start and end date*/
     private static final String SCHEDULER_DATE_FORMAT = "yyyy-MM-dd HH:mm:ss";
+    /** Pattern to pickout MSSQL */
+    private static final Pattern MSSQL_PATTERN = Pattern.compile("(sqlserver|microsoft|mssql)");
 
     public DatabaseTimerPersistence(final String database, String partition, String nodeName, int refreshInterval, boolean allowExecution) {
         this.database = database;
@@ -164,17 +168,15 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
         extractDialects();
         investigateDialect();
         checkDatabase();
+        refreshTask = new RefreshTask();
         if (refreshInterval > 0) {
-            refreshTask = new RefreshTask();
             timerInjectedValue.getValue().schedule(refreshTask, refreshInterval, refreshInterval);
         }
     }
 
     @Override
     public synchronized void stop(final StopContext context) {
-        if (refreshTask != null) {
-            refreshTask.cancel();
-        }
+        refreshTask.cancel();
         knownTimerIds.clear();
         managedReference.release();
         managedReference = null;
@@ -253,9 +255,9 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
                 unified = "h2";
             } else if (name.toLowerCase().contains("oracle")) {
                 unified = "oracle";
-            }else if (name.toLowerCase().contains("microsoft")) {
+            } else if (MSSQL_PATTERN.matcher(name.toLowerCase()).find()) {
                 unified = "mssql";
-            }else if (name.toLowerCase().contains("jconnect")) {
+            } else if (name.toLowerCase().contains("jconnect")) {
                 unified = "sybase";
             }
          }
@@ -324,10 +326,16 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
 
     @Override
     public void addTimer(final TimerImpl timerEntity) {
+        String timedObjectId = timerEntity.getTimedObjectId();
+        synchronized (this) {
+            if(!knownTimerIds.containsKey(timedObjectId)) {
+                throw EjbLogger.EJB3_TIMER_LOGGER.timerCannotBeAdded(timerEntity);
+            }
+        }
+
         String createTimer = sql(CREATE_TIMER);
         Connection connection = null;
         PreparedStatement statement = null;
-        ResultSet resultSet = null;
         try {
             synchronized (this) {
                 knownTimerIds.get(timerEntity.getTimedObjectId()).add(timerEntity.getId());
@@ -339,7 +347,6 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
         } catch (SQLException e) {
             throw new RuntimeException(e);
         } finally {
-            safeClose(resultSet);
             safeClose(statement);
             safeClose(connection);
         }
@@ -349,7 +356,6 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
     public void persistTimer(final TimerImpl timerEntity) {
         Connection connection = null;
         PreparedStatement statement = null;
-        ResultSet resultSet = null;
         try {
             connection = dataSource.getConnection();
             if (timerEntity.getState() == TimerState.CANCELED ||
@@ -383,7 +389,6 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
         } catch (SQLException e) {
             throw new RuntimeException(e);
         } finally {
-            safeClose(resultSet);
             safeClose(statement);
             safeClose(connection);
         }
@@ -453,7 +458,17 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
     }
 
     @Override
+    public synchronized void timerDeployed(String timedObjectId) {
+        knownTimerIds.put(timedObjectId, new HashSet<>());
+    }
+
+    @Override
     public List<TimerImpl> loadActiveTimers(final String timedObjectId, final TimerServiceImpl timerService) {
+        if(!knownTimerIds.containsKey(timedObjectId)) {
+            // if the timedObjectId has not being deployed
+            EjbLogger.EJB3_TIMER_LOGGER.timerNotDeployed(timedObjectId);
+            return Collections.emptyList();
+        }
         String loadTimer = sql(LOAD_ALL_TIMERS);
         Connection connection = null;
         PreparedStatement statement = null;
@@ -484,11 +499,12 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
                 }
             }
             synchronized (this) {
-                Set<String> ids = new HashSet<>();
+                // ids should be always be not null
+                Set<String> ids = knownTimerIds.get(timedObjectId);
                 for (Holder timer : timers) {
                     ids.add(timer.timer.getId());
                 }
-                knownTimerIds.put(timedObjectId, ids);
+
                 for(Holder timer : timers) {
                     if(timer.requiresReset) {
                         TimerImpl ret = timer.timer;
@@ -531,6 +547,10 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
     @Override
     public DatabaseTimerPersistence getValue() throws IllegalStateException, IllegalArgumentException {
         return this;
+    }
+
+    public void refreshTimers() {
+        refreshTask.run();
     }
 
     private Holder timerFromResult(final ResultSet resultSet, final TimerServiceImpl timerService) throws SQLException {
@@ -720,10 +740,11 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
             return null;
         }
         long time = date.getTime();
-        if(database != null && database.equals("mysql")) {
+        if(database != null && (database.equals("mysql") || database.equals("postgresql"))) {
             // truncate the milliseconds because MySQL 5.6.4+ and MariaDB 5.3+ do the same
             // and querying with a Timestamp containing milliseconds doesn't match the rows
             // with such truncated DATETIMEs
+            // truncate the milliseconds because postgres timestamp does not reliably support milliseconds
             time -= time % 1000;
         }
         return new Timestamp(time);
@@ -829,12 +850,30 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
                                 try {
                                     String id = resultSet.getString(1);
                                     if (!existing.remove(id)) {
-                                        synchronized (DatabaseTimerPersistence.this) {
-                                            knownTimerIds.get(timedObjectId).add(id);
-                                        }
                                         final Holder holder = timerFromResult(resultSet, timerService);
                                         if(holder != null) {
-                                            listener.timerAdded(holder.timer);
+                                            synchronized (DatabaseTimerPersistence.this) {
+                                                knownTimerIds.get(timedObjectId).add(id);
+                                                listener.timerAdded(holder.timer);
+                                            }
+                                        }
+                                    } else {
+                                        final Holder holder = timerFromResult(resultSet, listener.getTimerService());
+                                        if (holder != null) {
+                                            TimerImpl oldTimer = listener.getTimerService().getTimer(id);
+                                            // if it is already in memory but it is not in sync we have a problem
+                                            // remove and add -> the probable cause is db glitch
+                                            EnumSet<TimerState> valid = EnumSet.of(TimerState.IN_TIMEOUT, TimerState.RETRY_TIMEOUT, TimerState.CREATED, TimerState.ACTIVE);
+                                            boolean validDBTimer = valid.contains(holder.timer.getState());
+                                            boolean validMemoryTimer = oldTimer != null && !valid.contains(oldTimer.getState());
+                                            // if timers memory - db are in non intersect subsets of valid/invalid states. we put them in sync
+                                            if (validMemoryTimer && validDBTimer) {
+                                                synchronized (DatabaseTimerPersistence.this) {
+                                                    knownTimerIds.get(timedObjectId).add(holder.timer.getId());
+                                                    listener.timerSync(oldTimer, holder.timer);
+                                                }
+
+                                            }
                                         }
                                     }
                                 } catch (Exception e) {

@@ -33,19 +33,18 @@
         Maintain separation between the artifact id and the version to help prevent
         merge conflicts between commits changing the GA and those changing the V.
         -->
-        <version>18.0.0.Beta1-SNAPSHOT</version>
+        <version>25.0.0.Beta1-SNAPSHOT</version>
     </parent>
 
     <artifactId>wildfly-clustering-spi</artifactId>
     <packaging>jar</packaging>
 
     <name>WildFly: Clustering SPI</name>
+    <description>
+        An integration module for use by subsystem/modules that use or install mechanisms from the public clustering API.
+    </description>
 
     <dependencies>
-        <dependency>
-            <groupId>org.jboss.modules</groupId>
-            <artifactId>jboss-modules</artifactId>
-        </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>wildfly-clustering-common</artifactId>

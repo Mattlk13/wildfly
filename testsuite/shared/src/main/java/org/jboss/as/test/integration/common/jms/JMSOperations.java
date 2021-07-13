@@ -28,8 +28,8 @@ import org.jboss.dmr.ModelNode;
 import java.util.Map;
 
 /**
- * Utility to administrate JMS-related resources on the server. An separate implementation should be created for
- * every possible JMS provider to be tested.
+ * Utility to administrate Jakarta Messaging related resources on the server. An separate implementation should be created for
+ * every possible Jakarta Messaging provider to be tested.
  * Use JMSOperationsProvider to get instances of implementing classes.
  *
  * Specify the fully qualified name of the activated implementation class in resources/jmsoperations.properties file.
@@ -69,6 +69,10 @@ public interface JMSOperations {
 
     void removeJmsBridge(String name);
 
+    void addCoreBridge(String name, ModelNode attributes);
+
+    void removeCoreBridge(String name);
+
     void addCoreQueue(final String queueName, final String queueAddress, boolean durable, String routing);
 
     void removeCoreQueue(final String queueName);
@@ -89,6 +93,15 @@ public interface JMSOperations {
      */
     void removeRemoteAcceptor(String name);
 
+ /**
+     * Creates remote connector
+     *
+     * @param name          name of the remote connector
+     * @param socketBinding name of socket binding
+     * @param params        params
+     */
+    void createRemoteConnector(String name, String socketBinding, Map<String, String> params);
+
     void close();
 
     void addHttpConnector(String connectorName, String socketBinding, String endpoint, Map<String, String> parameters);
@@ -97,6 +110,8 @@ public interface JMSOperations {
 
 
     void addExternalHttpConnector(String connectorName, String socketBinding, String endpoint);
+
+    void addExternalRemoteConnector(String name, String socketBinding);
 
     void removeExternalHttpConnector(String connectorName);
 
@@ -108,4 +123,14 @@ public interface JMSOperations {
     void setSystemProperties(String destination, String resourceAdapter);
 
     void removeSystemProperties();
+
+    void enableMessagingTraces();
+
+    void createSocketBinding(String name, String interfaceName, int port);
+
+    boolean isRemoteBroker();
+
+    void disableSecurity();
+
+    void enableSecurity();
 }
