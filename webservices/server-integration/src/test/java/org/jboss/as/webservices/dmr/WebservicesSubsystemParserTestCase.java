@@ -66,19 +66,6 @@ public class WebservicesSubsystemParserTestCase extends AbstractSubsystemBaseTes
         return "schema/jboss-as-webservices_2_0.xsd";
     }
 
-    @Override
-    protected String[] getSubsystemTemplatePaths() throws IOException {
-        return new String[]{
-                "/subsystem-templates/webservices.xml"
-        };
-    }
-
-    @Test
-    @Override
-    public void testSchemaOfSubsystemTemplates() throws Exception {
-        super.testSchemaOfSubsystemTemplates();
-    }
-
     protected AdditionalInitialization createAdditionalInitialization() {
         return new AdditionalInitialization() {
             @Override
@@ -136,6 +123,8 @@ public class WebservicesSubsystemParserTestCase extends AbstractSubsystemBaseTes
         checkSubsystemBasics(model);
         checkEndpointConfigs(model);
         checkClientConfigs(model);
+        checkExtraCongfigs(model);
+
     }
 
     private void checkSubsystemBasics(ModelNode model) throws Exception {
@@ -170,14 +159,8 @@ public class WebservicesSubsystemParserTestCase extends AbstractSubsystemBaseTes
         assertEquals("my-handlers2", postHandlers.get(0).getName());
     }
 
-    @Test
-    public void testTransformersEAP620() throws Exception {
-        testTransformers_1_2_0(ModelTestControllerVersion.EAP_6_2_0);
-    }
-
-    @Test
-    public void testTransformersEAP630() throws Exception {
-        testTransformers_1_2_0(ModelTestControllerVersion.EAP_6_3_0);
+    private void checkExtraCongfigs(ModelNode model) throws Exception {
+        assertEquals("https", Attributes.WSDL_URI_SCHEME.resolveModelAttribute(ExpressionResolver.TEST_RESOLVER, model).asString());
     }
 
     @Test

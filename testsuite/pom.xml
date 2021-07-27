@@ -59,7 +59,7 @@
         Maintain separation between the artifact id and the version to help prevent
         merge conflicts between commits changing the GA and those changing the V.
         -->
-        <version>18.0.0.Beta1-SNAPSHOT</version>
+        <version>25.0.0.Beta1-SNAPSHOT</version>
     </parent>
 
     <artifactId>wildfly-testsuite</artifactId>
@@ -176,6 +176,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>jakarta.inject</groupId>
+            <artifactId>jakarta.inject-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
             <scope>test</scope>
@@ -186,6 +191,10 @@
         <testResources>
             <testResource>
                 <directory>src/test/resources</directory>
+            </testResource>
+            <testResource>
+                <directory>src/test/resources/filtered</directory>
+                <filtering>true</filtering>
             </testResource>
             <testResource>
                 <directory>src/test/java</directory>
@@ -230,7 +239,9 @@
                                            <exclude>bin/*.sh</exclude>
                                            <exclude>bin/*.bat</exclude>
                                            <exclude>bin/*.ps1</exclude>
-                                           <exclude>docs/</exclude>
+                                           <exclude>docs/licenses/</exclude>
+                                           <exclude>docs/schema/</exclude>
+                                           <exclude>docs/examples/configs/</exclude>
                                            <exclude>modules/</exclude>
                                            <exclude>welcome-content/*.png</exclude>
                                            <exclude>standalone/data</exclude>
@@ -329,9 +340,9 @@
                 <jdk>[1.9,)</jdk>
             </activation>
             <properties>
-                <!-- needed for arquillian-bytenman-extension -->
+                <!-- needed for arquillian-byteman-extension -->
                 <surefire.byteman.argline>-Djdk.attach.allowAttachSelf=true</surefire.byteman.argline>
-                <surefire.byteman.args>-Djboss.modules.system.packages=org.jboss.byteman -Djdk.attach.allowAttachSelf=true</surefire.byteman.args>
+                <surefire.byteman.args>-Djboss.modules.system.packages=com.sun.tools.attach,org.jboss.byteman -Djdk.attach.allowAttachSelf=true</surefire.byteman.args>
             </properties>
             <dependencies/>
         </profile>
@@ -393,7 +404,7 @@
                 <module>integration</module>
                 <module>compat</module>
                 <module>domain</module>
-                <module>layers</module>
+                <module>scripts</module>
             </modules>
         </profile>
 
@@ -479,7 +490,31 @@
         <profile>
             <id>layers_.module.profile</id>
             <activation><property><name>ts.layers</name></property></activation>
-            <modules><module>layers</module></modules>
+            <modules>
+                <module>integration</module>
+                <module>layers</module>
+            </modules>
+        </profile>
+
+        <profile>
+            <id>scripts.module.profile</id>
+            <activation><property><name>scripts.module</name></property></activation>
+            <modules><module>scripts</module></modules>
+        </profile>
+        <profile>
+            <id>scripts_.module.profile</id>
+            <activation><property><name>ts.scripts</name></property></activation>
+            <modules><module>scripts</module></modules>
+        </profile>
+
+        <profile>
+            <id>ee9.profile</id>
+            <activation><property><name>ts.ee9</name></property></activation>
+            <modules>
+                <module>integration</module>
+                <module>layers</module>
+                <module>scripts</module>
+            </modules>
         </profile>
 
 
@@ -610,6 +645,8 @@
             <properties>
                 <jboss.args>-secmgr</jboss.args>
                 <jboss.domain.server.args>-secmgr</jboss.domain.server.args>
+                <!-- Re-enable the default surefire execution -->
+                <surefire.default-test.phase>test</surefire.default-test.phase>
             </properties>
         </profile>
 
@@ -716,12 +753,6 @@
                     <version>${ds.jdbc.driver.version}</version>
                 </dependency>
             </dependencies>
-            <repositories>
-                <repository>
-                    <id>JBoss QA repository</id>
-                    <url>http://nexus.qa.jboss.com:8081/nexus/content/repositories/thirdparty</url>
-                </repository>
-            </repositories>
             <build>
                 <plugins>
                     <plugin>

@@ -33,13 +33,17 @@
         Maintain separation between the artifact id and the version to help prevent
         merge conflicts between commits changing the GA and those changing the V.
         -->
-        <version>18.0.0.Beta1-SNAPSHOT</version>
+        <version>25.0.0.Beta1-SNAPSHOT</version>
     </parent>
 
     <artifactId>wildfly-clustering-common</artifactId>
     <packaging>jar</packaging>
 
     <name>WildFly: Common code for clustering subsystems</name>
+    <description>
+        The code in this module is not explicitly related to clustering, but rather contains resuable code used by clustering modules
+        and any modules that integrate with clustering.
+    </description>
 
     <dependencies>
         <dependency>

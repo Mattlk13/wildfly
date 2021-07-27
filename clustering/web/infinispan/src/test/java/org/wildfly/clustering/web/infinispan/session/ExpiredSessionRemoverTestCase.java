@@ -21,7 +21,11 @@
  */
 package org.wildfly.clustering.web.infinispan.session;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.UUID;
 
@@ -43,9 +47,9 @@ import org.wildfly.clustering.web.session.SessionExpirationListener;
 public class ExpiredSessionRemoverTestCase {
     @Test
     public void test() {
-        SessionFactory<UUID, UUID, Object> factory = mock(SessionFactory.class);
-        SessionMetaDataFactory<UUID, Object> metaDataFactory = mock(SessionMetaDataFactory.class);
-        SessionAttributesFactory<UUID> attributesFactory = mock(SessionAttributesFactory.class);
+        SessionFactory<Object, UUID, UUID, Object> factory = mock(SessionFactory.class);
+        SessionMetaDataFactory<UUID> metaDataFactory = mock(SessionMetaDataFactory.class);
+        SessionAttributesFactory<Object, UUID> attributesFactory = mock(SessionAttributesFactory.class);
         SessionExpirationListener listener = mock(SessionExpirationListener.class);
         ImmutableSessionAttributes expiredAttributes = mock(ImmutableSessionAttributes.class);
         ImmutableSessionMetaData validMetaData = mock(ImmutableSessionMetaData.class);
@@ -60,7 +64,7 @@ public class ExpiredSessionRemoverTestCase {
         UUID expiredAttributesValue = UUID.randomUUID();
         UUID validMetaDataValue = UUID.randomUUID();
 
-        ExpiredSessionRemover<UUID, UUID, Object> subject = new ExpiredSessionRemover<>(factory);
+        ExpiredSessionRemover<Object, UUID, UUID, Object> subject = new ExpiredSessionRemover<>(factory);
 
         try (Registration regisration = subject.register(listener)) {
             when(factory.getMetaDataFactory()).thenReturn(metaDataFactory);

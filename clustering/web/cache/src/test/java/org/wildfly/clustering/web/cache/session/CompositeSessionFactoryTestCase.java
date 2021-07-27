@@ -41,11 +41,11 @@ import org.wildfly.clustering.web.session.Session;
  * @author Paul Ferraro
  */
 public class CompositeSessionFactoryTestCase {
-    private final SessionMetaDataFactory<CompositeSessionMetaDataEntry<Object>, Object> metaDataFactory = mock(SessionMetaDataFactory.class);
-    private final SessionAttributesFactory<Object> attributesFactory = mock(SessionAttributesFactory.class);
+    private final SessionMetaDataFactory<CompositeSessionMetaDataEntry<Object>> metaDataFactory = mock(SessionMetaDataFactory.class);
+    private final SessionAttributesFactory<Object, Object> attributesFactory = mock(SessionAttributesFactory.class);
     private final LocalContextFactory<Object> localContextFactory = mock(LocalContextFactory.class);
 
-    private final SessionFactory<CompositeSessionMetaDataEntry<Object>, Object, Object> factory = new CompositeSessionFactory<>(this.metaDataFactory, this.attributesFactory, this.localContextFactory);
+    private final SessionFactory<Object, CompositeSessionMetaDataEntry<Object>, Object, Object> factory = new CompositeSessionFactory<>(this.metaDataFactory, this.attributesFactory, this.localContextFactory);
 
     @Test
     public void createValue() {
@@ -100,15 +100,21 @@ public class CompositeSessionFactoryTestCase {
 
         when(this.metaDataFactory.remove(id)).thenReturn(false);
 
-        this.factory.remove(id);
+        boolean removed = this.factory.remove(id);
 
-        verify(this.attributesFactory, never()).remove(id);
+        verify(this.attributesFactory).remove(id);
+
+        assertFalse(removed);
+
+        reset(this.attributesFactory);
 
         when(this.metaDataFactory.remove(id)).thenReturn(true);
 
-        this.factory.remove(id);
+        removed = this.factory.remove(id);
 
         verify(this.attributesFactory).remove(id);
+
+        assertTrue(removed);
     }
 
     @Test
@@ -126,14 +132,15 @@ public class CompositeSessionFactoryTestCase {
         Object attributesValue = new Object();
         InvalidatableSessionMetaData metaData = mock(InvalidatableSessionMetaData.class);
         SessionAttributes attributes = mock(SessionAttributes.class);
+        Object context = new Object();
         String id = "id";
 
         when(entry.getKey()).thenReturn(metaDataValue);
         when(entry.getValue()).thenReturn(attributesValue);
         when(this.metaDataFactory.createSessionMetaData(id, metaDataValue)).thenReturn(metaData);
-        when(this.attributesFactory.createSessionAttributes(id, attributesValue)).thenReturn(attributes);
+        when(this.attributesFactory.createSessionAttributes(same(id), same(attributesValue), same(metaData), same(context))).thenReturn(attributes);
 
-        Session<Object> result = this.factory.createSession(id, entry);
+        Session<Object> result = this.factory.createSession(id, entry, context);
 
         assertSame(id, result.getId());
         assertSame(metaData, result.getMetaData());
@@ -162,5 +169,13 @@ public class CompositeSessionFactoryTestCase {
         assertSame(id, result.getId());
         assertSame(metaData, result.getMetaData());
         assertSame(attributes, result.getAttributes());
+    }
+
+    @Test
+    public void close() {
+        this.factory.close();
+
+        verify(this.metaDataFactory).close();
+        verify(this.attributesFactory).close();
     }
 }

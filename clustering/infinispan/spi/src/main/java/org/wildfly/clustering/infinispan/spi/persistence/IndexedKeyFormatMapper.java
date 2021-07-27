@@ -22,6 +22,8 @@
 
 package org.wildfly.clustering.infinispan.spi.persistence;
 
+import static org.wildfly.common.Assert.checkNotNullParam;
+
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +49,7 @@ public class IndexedKeyFormatMapper implements TwoWayKey2StringMapper {
             this.indexes.put(this.keyFormats.get(i).getTargetClass(), i);
         }
         // Determine number of characters to reserve for index
-        this.padding = (int) (Math.log(this.keyFormats.size() - 1) / Math.log(HEX_RADIX)) + 1;
+        this.padding = (int) (Math.log( (double) this.keyFormats.size() - 1) / Math.log( (double) HEX_RADIX)) + 1;
     }
 
     @Override
@@ -57,6 +59,7 @@ public class IndexedKeyFormatMapper implements TwoWayKey2StringMapper {
 
     @Override
     public String getStringMapping(Object key) {
+        checkNotNullParam("key", key);
         Integer index = this.indexes.get(key.getClass());
         if (index == null) {
             throw new IllegalArgumentException(key.getClass().getName());

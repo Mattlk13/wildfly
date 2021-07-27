@@ -1,6 +1,6 @@
 /*
  * JBoss, Home of Professional Open Source.
- * Copyright 2015, Red Hat, Inc., and individual contributors
+ * Copyright 2021, Red Hat, Inc., and individual contributors
  * as indicated by the @author tags. See the copyright.txt file in the
  * distribution for a full listing of individual contributors.
  *
@@ -22,138 +22,48 @@
 
 package org.wildfly.clustering.web.infinispan.session;
 
-import javax.transaction.SystemException;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 import org.infinispan.Cache;
-import org.infinispan.commons.CacheException;
 import org.infinispan.context.Flag;
-import org.infinispan.notifications.Listener;
-import org.infinispan.notifications.cachelistener.annotation.CacheEntriesEvicted;
-import org.infinispan.notifications.cachelistener.event.CacheEntriesEvictedEvent;
-import org.wildfly.clustering.ee.Mutator;
-import org.wildfly.clustering.ee.cache.CacheProperties;
-import org.wildfly.clustering.ee.infinispan.CacheEntryMutator;
-import org.wildfly.clustering.infinispan.spi.distribution.Key;
-import org.wildfly.clustering.web.cache.session.CompositeSessionMetaData;
+import org.wildfly.clustering.ee.Key;
 import org.wildfly.clustering.web.cache.session.CompositeSessionMetaDataEntry;
-import org.wildfly.clustering.web.cache.session.InvalidatableSessionMetaData;
-import org.wildfly.clustering.web.cache.session.MutableSessionAccessMetaData;
-import org.wildfly.clustering.web.cache.session.MutableSessionCreationMetaData;
 import org.wildfly.clustering.web.cache.session.SessionAccessMetaData;
-import org.wildfly.clustering.web.cache.session.SessionCreationMetaData;
 import org.wildfly.clustering.web.cache.session.SessionCreationMetaDataEntry;
-import org.wildfly.clustering.web.cache.session.SessionMetaDataFactory;
-import org.wildfly.clustering.web.cache.session.SimpleSessionAccessMetaData;
-import org.wildfly.clustering.web.cache.session.SimpleSessionCreationMetaData;
-import org.wildfly.clustering.web.session.ImmutableSessionMetaData;
 
 /**
+ * {@link org.wildfly.clustering.web.cache.session.SessionMetaDataFactory} implementation for read-committed and non-transactional caches.
  * @author Paul Ferraro
  */
-@Listener(sync = false)
-public class InfinispanSessionMetaDataFactory<L> implements SessionMetaDataFactory<CompositeSessionMetaDataEntry<L>, L> {
+public class InfinispanSessionMetaDataFactory<L> extends AbstractInfinispanSessionMetaDataFactory<L> {
 
-    private final Cache<SessionCreationMetaDataKey, SessionCreationMetaDataEntry<L>> creationMetaDataCache;
-    private final Cache<SessionCreationMetaDataKey, SessionCreationMetaDataEntry<L>> findCreationMetaDataCache;
-    private final Cache<SessionAccessMetaDataKey, SessionAccessMetaData> accessMetaDataCache;
-    private final CacheProperties properties;
+    private final Cache<Key<String>, Object> cache;
 
-    @SuppressWarnings("unchecked")
-    public InfinispanSessionMetaDataFactory(Cache<? extends Key<String>, ?> cache, CacheProperties properties) {
-        this.creationMetaDataCache = (Cache<SessionCreationMetaDataKey, SessionCreationMetaDataEntry<L>>) cache;
-        this.findCreationMetaDataCache = properties.isLockOnRead() ? this.creationMetaDataCache.getAdvancedCache().withFlags(Flag.FORCE_WRITE_LOCK) : this.creationMetaDataCache;
-        this.accessMetaDataCache = (Cache<SessionAccessMetaDataKey, SessionAccessMetaData>) cache;
-        this.properties = properties;
+    public InfinispanSessionMetaDataFactory(InfinispanSessionMetaDataFactoryConfiguration configuration) {
+        super(configuration);
+        this.cache = configuration.getCache();
     }
 
     @Override
-    public CompositeSessionMetaDataEntry<L> createValue(String id, Void context) {
-        SessionCreationMetaDataEntry<L> creationMetaDataEntry = new SessionCreationMetaDataEntry<>(new SimpleSessionCreationMetaData());
-        if (this.creationMetaDataCache.getAdvancedCache().withFlags(Flag.FORCE_SYNCHRONOUS).putIfAbsent(new SessionCreationMetaDataKey(id), creationMetaDataEntry) != null) {
-            return null;
+    public CompositeSessionMetaDataEntry<L> apply(String id, Set<Flag> flags) {
+        SessionCreationMetaDataKey creationMetaDataKey = new SessionCreationMetaDataKey(id);
+        SessionAccessMetaDataKey accessMetaDataKey = new SessionAccessMetaDataKey(id);
+        Set<Key<String>> keys = new HashSet<>(3);
+        keys.add(creationMetaDataKey);
+        keys.add(accessMetaDataKey);
+        // Use bulk read
+        Map<Key<String>, Object> entries = this.cache.getAdvancedCache().withFlags(flags).getAll(keys);
+        @SuppressWarnings("unchecked")
+        SessionCreationMetaDataEntry<L> creationMetaDataEntry = (SessionCreationMetaDataEntry<L>) entries.get(creationMetaDataKey);
+        SessionAccessMetaData accessMetaData = (SessionAccessMetaData) entries.get(accessMetaDataKey);
+        if ((creationMetaDataEntry != null) && (accessMetaData != null)) {
+            return new CompositeSessionMetaDataEntry<>(creationMetaDataEntry, accessMetaData);
         }
-        SessionAccessMetaData accessMetaData = new SimpleSessionAccessMetaData();
-        this.accessMetaDataCache.getAdvancedCache().withFlags(Flag.IGNORE_RETURN_VALUES).put(new SessionAccessMetaDataKey(id), accessMetaData);
-        return new CompositeSessionMetaDataEntry<>(creationMetaDataEntry.getMetaData(), accessMetaData, creationMetaDataEntry.getLocalContext());
-    }
-
-    @Override
-    public CompositeSessionMetaDataEntry<L> findValue(String id) {
-        return this.getValue(id, this.findCreationMetaDataCache);
-    }
-
-    @Override
-    public CompositeSessionMetaDataEntry<L> tryValue(String id) {
-        return this.getValue(id, this.findCreationMetaDataCache.getAdvancedCache().withFlags(Flag.ZERO_LOCK_ACQUISITION_TIMEOUT, Flag.FAIL_SILENTLY));
-    }
-
-    private CompositeSessionMetaDataEntry<L> getValue(String id, Cache<SessionCreationMetaDataKey, SessionCreationMetaDataEntry<L>> creationMetaDataCache) {
-        SessionCreationMetaDataKey key = new SessionCreationMetaDataKey(id);
-        SessionCreationMetaDataEntry<L> creationMetaDataEntry = creationMetaDataCache.get(key);
-        if (creationMetaDataEntry != null) {
-            SessionAccessMetaData accessMetaData = this.accessMetaDataCache.get(new SessionAccessMetaDataKey(id));
-            if (accessMetaData != null) {
-                return new CompositeSessionMetaDataEntry<>(creationMetaDataEntry.getMetaData(), accessMetaData, creationMetaDataEntry.getLocalContext());
-            }
-            // Purge orphaned entry, making sure not to trigger cache listener
-            creationMetaDataCache.getAdvancedCache().withFlags(Flag.IGNORE_RETURN_VALUES, Flag.SKIP_LISTENER_NOTIFICATION).remove(key);
+        if (flags.isEmpty() && ((creationMetaDataEntry != null) || (accessMetaData != null))) {
+            this.purge(id);
         }
         return null;
-    }
-
-    @Override
-    public InvalidatableSessionMetaData createSessionMetaData(String id, CompositeSessionMetaDataEntry<L> entry) {
-        boolean created = entry.getAccessMetaData().getLastAccessedDuration().isZero();
-        SessionCreationMetaDataKey creationMetaDataKey = new SessionCreationMetaDataKey(id);
-        Mutator creationMutator = this.properties.isTransactional() && created ? Mutator.PASSIVE : new CacheEntryMutator<>(this.creationMetaDataCache, creationMetaDataKey, new SessionCreationMetaDataEntry<>(entry.getCreationMetaData(), entry.getLocalContext()));
-        SessionCreationMetaData creationMetaData = new MutableSessionCreationMetaData(entry.getCreationMetaData(), creationMutator);
-
-        SessionAccessMetaDataKey accessMetaDataKey = new SessionAccessMetaDataKey(id);
-        Mutator accessMutator = this.properties.isTransactional() && created ? Mutator.PASSIVE : new CacheEntryMutator<>(this.accessMetaDataCache, accessMetaDataKey, entry.getAccessMetaData());
-        SessionAccessMetaData accessMetaData = new MutableSessionAccessMetaData(entry.getAccessMetaData(), accessMutator);
-
-        return new CompositeSessionMetaData(creationMetaData, accessMetaData);
-    }
-
-    @Override
-    public ImmutableSessionMetaData createImmutableSessionMetaData(String id, CompositeSessionMetaDataEntry<L> entry) {
-        return new CompositeSessionMetaData(entry.getCreationMetaData(), entry.getAccessMetaData());
-    }
-
-    @Override
-    public boolean remove(String id) {
-        return this.remove(id, this.creationMetaDataCache);
-    }
-
-    @Override
-    public boolean purge(String id) {
-        return this.remove(id, this.creationMetaDataCache.getAdvancedCache().withFlags(Flag.SKIP_LISTENER_NOTIFICATION));
-    }
-
-    private boolean remove(String id, Cache<SessionCreationMetaDataKey, SessionCreationMetaDataEntry<L>> creationMetaDataCache) {
-        SessionCreationMetaDataKey key = new SessionCreationMetaDataKey(id);
-        try {
-            if (!this.properties.isLockOnWrite() || (creationMetaDataCache.getAdvancedCache().getTransactionManager().getTransaction() == null) || creationMetaDataCache.getAdvancedCache().withFlags(Flag.ZERO_LOCK_ACQUISITION_TIMEOUT, Flag.FAIL_SILENTLY).lock(key)) {
-                creationMetaDataCache.getAdvancedCache().withFlags(Flag.IGNORE_RETURN_VALUES).remove(key);
-                this.accessMetaDataCache.getAdvancedCache().withFlags(Flag.IGNORE_RETURN_VALUES).remove(new SessionAccessMetaDataKey(id));
-                return true;
-            }
-            return false;
-        } catch (SystemException e) {
-            throw new CacheException(e);
-        }
-    }
-
-    @CacheEntriesEvicted
-    public void evicted(CacheEntriesEvictedEvent<Key<String>, ?> event) {
-        if (!event.isPre()) {
-            Cache<SessionAccessMetaDataKey, SessionAccessMetaData> cache = this.accessMetaDataCache.getAdvancedCache().withFlags(Flag.SKIP_LISTENER_NOTIFICATION);
-            for (Key<String> key : event.getEntries().keySet()) {
-                // Workaround for ISPN-8324
-                if (key instanceof SessionCreationMetaDataKey) {
-                    cache.evict(new SessionAccessMetaDataKey(key.getValue()));
-                }
-            }
-        }
     }
 }

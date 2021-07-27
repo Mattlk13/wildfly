@@ -26,9 +26,9 @@ import static java.lang.Thread.currentThread;
 import static java.security.AccessController.doPrivileged;
 import static org.jboss.as.connector.logging.ConnectorLogger.DEPLOYMENT_CONNECTOR_LOGGER;
 
+import javax.naming.InitialContext;
 import javax.naming.Reference;
 import javax.resource.spi.ResourceAdapter;
-import javax.security.auth.Subject;
 import javax.transaction.TransactionManager;
 import java.io.File;
 import java.io.PrintWriter;
@@ -42,7 +42,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
-import javax.naming.InitialContext;
 
 import org.jboss.as.connector.logging.ConnectorLogger;
 import org.jboss.as.connector.metadata.api.resourceadapter.WorkManagerSecurity;
@@ -457,7 +456,7 @@ public abstract class AbstractResourceAdapterDeploymentService {
                                         break;
                                     }
                                     case REMOVED: {
-                                        DEPLOYMENT_CONNECTOR_LOGGER.debugf("Removed JCA ConnectionFactory [%s]", jndi);
+                                        DEPLOYMENT_CONNECTOR_LOGGER.debugf("Removed Jakarta Connectors ConnectionFactory [%s]", jndi);
                                     }
                                 }
                             }
@@ -562,7 +561,7 @@ public abstract class AbstractResourceAdapterDeploymentService {
                                 break;
                             }
                             case REMOVED: {
-                                DEPLOYMENT_CONNECTOR_LOGGER.debugf("Removed JCA AdminObject [%s]", jndi);
+                                DEPLOYMENT_CONNECTOR_LOGGER.debugf("Removed Jakarta Connectors AdminObject [%s]", jndi);
                             }
                         }
                     }
@@ -683,23 +682,7 @@ public abstract class AbstractResourceAdapterDeploymentService {
             } else if (securityDomain == null || securityDomain.trim().equals("")) {
                 return null;
             } else {
-                return new PicketBoxSubjectFactory(subjectFactory.getValue()){
-
-                    @Override
-                    public Subject createSubject(final String sd) {
-                        ServerSecurityManager sm = secManager.getOptionalValue();
-                        if (sm != null) {
-                            sm.push(sd);
-                        }
-                        try {
-                            return super.createSubject(sd);
-                        } finally {
-                            if (sm != null) {
-                                sm.pop();
-                            }
-                        }
-                    }
-                };
+                return new PicketBoxSubjectFactory(subjectFactory.getValue());
             }
         }
 

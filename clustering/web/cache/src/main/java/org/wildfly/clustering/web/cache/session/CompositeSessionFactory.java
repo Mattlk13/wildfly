@@ -32,15 +32,19 @@ import org.wildfly.clustering.web.session.ImmutableSessionMetaData;
 import org.wildfly.clustering.web.session.Session;
 
 /**
+ * @param <C> the ServletContext specification type
+ * @param <V> the session attribute value type
+ * @param <L> the local context type
  * @author Paul Ferraro
  */
-public class CompositeSessionFactory<V, L> implements SessionFactory<CompositeSessionMetaDataEntry<L>, V, L> {
+public class CompositeSessionFactory<C, V, L> extends CompositeImmutableSessionFactory<V, L> implements SessionFactory<C, CompositeSessionMetaDataEntry<L>, V, L> {
 
-    private final SessionMetaDataFactory<CompositeSessionMetaDataEntry<L>, L> metaDataFactory;
-    private final SessionAttributesFactory<V> attributesFactory;
+    private final SessionMetaDataFactory<CompositeSessionMetaDataEntry<L>> metaDataFactory;
+    private final SessionAttributesFactory<C, V> attributesFactory;
     private final LocalContextFactory<L> localContextFactory;
 
-    public CompositeSessionFactory(SessionMetaDataFactory<CompositeSessionMetaDataEntry<L>, L> metaDataFactory, SessionAttributesFactory<V> attributesFactory, LocalContextFactory<L> localContextFactory) {
+    public CompositeSessionFactory(SessionMetaDataFactory<CompositeSessionMetaDataEntry<L>> metaDataFactory, SessionAttributesFactory<C, V> attributesFactory, LocalContextFactory<L> localContextFactory) {
+        super(metaDataFactory, attributesFactory);
         this.metaDataFactory = metaDataFactory;
         this.attributesFactory = attributesFactory;
         this.localContextFactory = localContextFactory;
@@ -76,41 +80,48 @@ public class CompositeSessionFactory<V, L> implements SessionFactory<CompositeSe
             if (attributesValue != null) {
                 return new SimpleImmutableEntry<>(metaDataValue, attributesValue);
             }
-            // Purge obsolete meta data
-            this.metaDataFactory.purge(id);
         }
         return null;
     }
 
     @Override
     public boolean remove(String id) {
-        if (this.metaDataFactory.remove(id)) {
-            this.attributesFactory.remove(id);
-            return true;
-        }
-        return false;
+        this.attributesFactory.remove(id);
+        return this.metaDataFactory.remove(id);
     }
 
     @Override
-    public SessionMetaDataFactory<CompositeSessionMetaDataEntry<L>, L> getMetaDataFactory() {
+    public boolean purge(String id) {
+        this.attributesFactory.purge(id);
+        return this.metaDataFactory.purge(id);
+    }
+
+    @Override
+    public SessionMetaDataFactory<CompositeSessionMetaDataEntry<L>> getMetaDataFactory() {
         return this.metaDataFactory;
     }
 
     @Override
-    public SessionAttributesFactory<V> getAttributesFactory() {
+    public SessionAttributesFactory<C, V> getAttributesFactory() {
         return this.attributesFactory;
     }
 
     @Override
-    public Session<L> createSession(String id, Map.Entry<CompositeSessionMetaDataEntry<L>, V> entry) {
+    public Session<L> createSession(String id, Map.Entry<CompositeSessionMetaDataEntry<L>, V> entry, C context) {
         CompositeSessionMetaDataEntry<L> key = entry.getKey();
         InvalidatableSessionMetaData metaData = this.metaDataFactory.createSessionMetaData(id, key);
-        SessionAttributes attributes = this.attributesFactory.createSessionAttributes(id, entry.getValue());
+        SessionAttributes attributes = this.attributesFactory.createSessionAttributes(id, entry.getValue(), metaData, context);
         return new CompositeSession<>(id, metaData, attributes, key.getLocalContext(), this.localContextFactory, this);
     }
 
     @Override
     public ImmutableSession createImmutableSession(String id, ImmutableSessionMetaData metaData, ImmutableSessionAttributes attributes) {
         return new CompositeImmutableSession(id, metaData, attributes);
+    }
+
+    @Override
+    public void close() {
+        this.metaDataFactory.close();
+        this.attributesFactory.close();
     }
 }

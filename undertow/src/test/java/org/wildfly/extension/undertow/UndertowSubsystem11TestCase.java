@@ -37,8 +37,8 @@ import org.junit.Test;
  */
 public class UndertowSubsystem11TestCase extends AbstractUndertowSubsystemTestCase {
 
+    private static final int SCHEMA_VERSION = 1;
     private final String virtualHostName = "some-server";
-    private final int flag = 0;
 
     @Override
     protected String getSubsystemXml() throws IOException {
@@ -67,16 +67,16 @@ public class UndertowSubsystem11TestCase extends AbstractUndertowSubsystemTestCa
     @Test
     public void testRuntime() throws Exception {
         setProperty();
-        KernelServicesBuilder builder = createKernelServicesBuilder(UndertowSubsystemTestCase.RUNTIME)
+        KernelServicesBuilder builder = createKernelServicesBuilder(AbstractUndertowSubsystemTestCase.RUNTIME)
                 .setSubsystemXml(getSubsystemXml());
         KernelServices mainServices = builder.build();
-        testRuntime(mainServices, virtualHostName, flag);
+        testRuntime(mainServices, virtualHostName, SCHEMA_VERSION);
         testRuntimeOther(mainServices);
     }
 
     @Override
     protected AdditionalInitialization createAdditionalInitialization() {
-        return UndertowSubsystemTestCase.DEFAULT;
+        return AbstractUndertowSubsystemTestCase.DEFAULT;
     }
 
 }

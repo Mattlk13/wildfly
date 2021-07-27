@@ -1,13 +1,19 @@
+<p align="center">
+  <a href="https://wildfly.org">
+      <img src="logo/wildfly_logo.svg" alt="wildfly logo" title="wildlfy" width="600"/>
+  </a>
+</p>
+
 WildFly Application Server
 ========================
-http://wildfly.org
+https://wildfly.org
 
 * Fast Startup
 * Small Footprint
 * Modular Design
 * Unified Configuration and Management
 
-And of course Java EE!
+And of course Jakarta EE!
 
 Building
 -------------------
@@ -15,7 +21,7 @@ Building
 Prerequisites:
 
 * JDK 8 or newer - check `java -version`
-* Maven 3.3.1 or newer - check `mvn -v`
+* Maven 3.6.0 or newer - check `mvn -v`
 * On *nix systems, make sure that the maximum number of open files for the user running the build is at least 4096
   (check `ulimit -n`) or more, depending on what other i/o intensive processes the user is running.
 
@@ -51,11 +57,16 @@ To stop the server, press Ctrl + C, or use the admin console
 
     ./jboss-cli.sh --connect command=:shutdown
 
-More information: https://docs.jboss.org/author/display/WFLY10/Getting+Started+Guide
+Check 'Getting Started Guide' in the WildFly documentation for more information about how to start and stop WildFly.
+
+Documentation
+------------------------------------------
+
+* https://docs.wildfly.org/
 
 Contributing
 ------------------
-https://developer.jboss.org/wiki/HackingOnWildFly
+* https://developer.jboss.org/wiki/HackingOnWildFly
 
 Build vs. Dist directories
 --------------------------
@@ -78,7 +89,7 @@ The testsuite module contains several submodules including the following:
 * "cluster" -- tests of the WildFly HA clustering features. Should be run with no failures before any major commits.
 * "domain" -- tests of the domain management features. Should be run with no failures before any major commits.
 * "integration" -- tests of a WildFly standalone server's internals. Should be run with no failures before any major commits.
-* "spec" -- tests of features that only involve end user use of the Java EE 7 spec APIs. Should be run with no failures before any major commits.
+* "spec" -- tests of features that only involve end user use of the Jakarta EE spec APIs. Should be run with no failures before any major commits.
 
 For basic smoke tests, simply: `mvn test`
 

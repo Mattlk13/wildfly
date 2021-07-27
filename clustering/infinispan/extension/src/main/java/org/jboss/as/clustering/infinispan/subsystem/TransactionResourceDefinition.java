@@ -27,22 +27,25 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 
 import javax.transaction.TransactionSynchronizationRegistry;
 
 import org.infinispan.transaction.LockingMode;
+import org.jboss.as.clustering.controller.AttributeTranslation;
 import org.jboss.as.clustering.controller.BinaryCapabilityNameResolver;
 import org.jboss.as.clustering.controller.BinaryRequirementCapability;
 import org.jboss.as.clustering.controller.Capability;
 import org.jboss.as.clustering.controller.CommonRequirement;
 import org.jboss.as.clustering.controller.ManagementResourceRegistration;
-import org.jboss.as.clustering.controller.MetricHandler;
 import org.jboss.as.clustering.controller.Operations;
+import org.jboss.as.clustering.controller.ReadAttributeTranslationHandler;
+import org.jboss.as.clustering.controller.Registration;
 import org.jboss.as.clustering.controller.ResourceDescriptor;
-import org.jboss.as.clustering.controller.SimpleResourceRegistration;
 import org.jboss.as.clustering.controller.ResourceServiceHandler;
 import org.jboss.as.clustering.controller.SimpleAliasEntry;
+import org.jboss.as.clustering.controller.SimpleResourceRegistration;
 import org.jboss.as.clustering.controller.SimpleResourceServiceHandler;
 import org.jboss.as.clustering.controller.transform.AttributeOperationTransformer;
 import org.jboss.as.clustering.controller.transform.ChainedOperationTransformer;
@@ -64,7 +67,9 @@ import org.jboss.as.controller.registry.Resource;
 import org.jboss.as.controller.transform.OperationResultTransformer;
 import org.jboss.as.controller.transform.ResourceTransformationContext;
 import org.jboss.as.controller.transform.ResourceTransformer;
-import org.jboss.as.controller.transform.description.AttributeConverter.DefaultValueAttributeConverter;
+import org.jboss.as.controller.transform.description.AttributeConverter;
+import org.jboss.as.controller.transform.description.DiscardAttributeChecker;
+import org.jboss.as.controller.transform.description.RejectAttributeChecker;
 import org.jboss.as.controller.transform.description.ResourceTransformationDescriptionBuilder;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
@@ -98,12 +103,18 @@ public class TransactionResourceDefinition extends ComponentResourceDefinition {
                 return builder.setValidator(new EnumValidator<>(TransactionMode.class));
             }
         },
-        STOP_TIMEOUT("stop-timeout", ModelType.LONG, new ModelNode(10000L)) {
+        STOP_TIMEOUT("stop-timeout", ModelType.LONG, new ModelNode(TimeUnit.SECONDS.toMillis(10))) {
             @Override
             public SimpleAttributeDefinitionBuilder apply(SimpleAttributeDefinitionBuilder builder) {
                 return builder.setMeasurementUnit(MeasurementUnit.MILLISECONDS);
             }
         },
+        COMPLETE_TIMEOUT("complete-timeout", ModelType.LONG, new ModelNode(TimeUnit.SECONDS.toMillis(60))) {
+            @Override
+            public SimpleAttributeDefinitionBuilder apply(SimpleAttributeDefinitionBuilder builder) {
+                return builder.setMeasurementUnit(MeasurementUnit.MILLISECONDS);
+            }
+        }
         ;
         private final SimpleAttributeDefinition definition;
 
@@ -145,9 +156,53 @@ public class TransactionResourceDefinition extends ComponentResourceDefinition {
         }
     }
 
+    enum DeprecatedMetric implements AttributeTranslation, UnaryOperator<PathAddress>, Registration<ManagementResourceRegistration> {
+        COMMITS(TransactionMetric.COMMITS),
+        PREPARES(TransactionMetric.PREPARES),
+        ROLLBACKS(TransactionMetric.ROLLBACKS),
+        ;
+        private final AttributeDefinition definition;
+        private final org.jboss.as.clustering.controller.Attribute targetAttribute;
+
+        DeprecatedMetric(TransactionMetric metric) {
+            this.targetAttribute = metric;
+            this.definition = new SimpleAttributeDefinitionBuilder(metric.getName(), metric.getDefinition().getType())
+                    .setDeprecated(InfinispanModel.VERSION_11_0_0.getVersion())
+                    .setStorageRuntime()
+                    .build();
+        }
+
+        @Override
+        public void register(ManagementResourceRegistration registration) {
+            registration.registerReadOnlyAttribute(this.definition, new ReadAttributeTranslationHandler(this));
+        }
+
+        @Override
+        public org.jboss.as.clustering.controller.Attribute getTargetAttribute() {
+            return this.targetAttribute;
+        }
+
+        @Override
+        public UnaryOperator<PathAddress> getPathAddressTransformation() {
+            return this;
+        }
+
+        @Override
+        public PathAddress apply(PathAddress address) {
+            PathAddress cacheAddress = address.getParent();
+            return cacheAddress.getParent().append(CacheRuntimeResourceDefinition.pathElement(cacheAddress.getLastElement().getValue()), TransactionRuntimeResourceDefinition.PATH);
+        }
+    }
+
     @SuppressWarnings("deprecation")
     static void buildTransformation(ModelVersion version, ResourceTransformationDescriptionBuilder parent) {
         ResourceTransformationDescriptionBuilder builder = InfinispanModel.VERSION_4_0_0.requiresTransformation(version) ? parent.addChildRedirection(PATH, LEGACY_PATH, RequiredChildResourceDiscardPolicy.NEVER) : parent.addChildResource(PATH);
+
+        if (InfinispanModel.VERSION_15_0_0.requiresTransformation(version)) {
+            builder.getAttributeBuilder()
+                   .setDiscard(DiscardAttributeChecker.DEFAULT_VALUE, Attribute.COMPLETE_TIMEOUT.getName())
+                   .addRejectCheck(RejectAttributeChecker.DEFINED, Attribute.COMPLETE_TIMEOUT.getDefinition());
+        }
 
         List<org.jboss.as.controller.transform.OperationTransformer> addOperationTransformers = new LinkedList<>();
         List<org.jboss.as.controller.transform.OperationTransformer> removeOperationTransformers = new LinkedList<>();
@@ -242,7 +297,7 @@ public class TransactionResourceDefinition extends ComponentResourceDefinition {
             builder.setCustomResourceTransformer(modeTransformer);
 
             // change default value of stop-timeout attribute
-            builder.getAttributeBuilder().setValueConverter(new DefaultValueAttributeConverter(Attribute.STOP_TIMEOUT.getDefinition()), Attribute.STOP_TIMEOUT.getDefinition());
+            builder.getAttributeBuilder().setValueConverter(AttributeConverter.DEFAULT_VALUE, Attribute.STOP_TIMEOUT.getName());
         }
 
         buildOperationTransformation(builder, ModelDescriptionConstants.ADD, addOperationTransformers);
@@ -290,7 +345,9 @@ public class TransactionResourceDefinition extends ComponentResourceDefinition {
         new SimpleResourceRegistration(descriptor, handler).register(registration);
 
         if (registration.isRuntimeOnlyRegistrationValid()) {
-            new MetricHandler<>(new TransactionMetricExecutor(), TransactionMetric.class).register(registration);
+            for (DeprecatedMetric metric : EnumSet.allOf(DeprecatedMetric.class)) {
+                metric.register(registration);
+            }
         }
 
         return registration;

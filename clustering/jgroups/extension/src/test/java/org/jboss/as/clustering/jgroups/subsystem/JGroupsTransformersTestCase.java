@@ -82,6 +82,8 @@ public class JGroupsTransformersTestCase extends OperationTestCaseBase {
                 return JGroupsModel.VERSION_5_0_0;
             case EAP_7_2_0:
                 return JGroupsModel.VERSION_6_0_0;
+            case EAP_7_3_0:
+                return JGroupsModel.VERSION_7_0_0;
             default:
                 throw new IllegalArgumentException();
         }
@@ -97,6 +99,7 @@ public class JGroupsTransformersTestCase extends OperationTestCaseBase {
             case EAP_7_0_0:
             case EAP_7_1_0:
             case EAP_7_2_0:
+            case EAP_7_3_0:
                 return new String[] {
                         formatEAP7SubsystemArtifact(version),
                         formatArtifact("org.jboss.eap:wildfly-clustering-common:%s", version),
@@ -112,6 +115,8 @@ public class JGroupsTransformersTestCase extends OperationTestCaseBase {
     private static org.jboss.as.subsystem.test.AdditionalInitialization createAdditionalInitialization() {
         return new AdditionalInitialization()
                 .require(CommonUnaryRequirement.SOCKET_BINDING, "jgroups-tcp", "jgroups-udp", "jgroups-udp-fd", "some-binding", "client-binding", "jgroups-diagnostics", "jgroups-mping", "jgroups-tcp-fd", "jgroups-client-fd", "jgroups-state-xfr")
+                .require(CommonUnaryRequirement.KEY_STORE, "my-key-store")
+                .require(CommonUnaryRequirement.CREDENTIAL_STORE, "my-credential-store")
                 ;
     }
 
@@ -133,6 +138,11 @@ public class JGroupsTransformersTestCase extends OperationTestCaseBase {
     @Test
     public void testTransformerEAP720() throws Exception {
         testTransformation(ModelTestControllerVersion.EAP_7_2_0);
+    }
+
+    @Test
+    public void testTransformerEAP730() throws Exception {
+        testTransformation(ModelTestControllerVersion.EAP_7_3_0);
     }
 
     /**
@@ -339,6 +349,11 @@ public class JGroupsTransformersTestCase extends OperationTestCaseBase {
         testRejections(ModelTestControllerVersion.EAP_7_2_0);
     }
 
+    @Test
+    public void testRejectionsEAP730() throws Exception {
+        testRejections(ModelTestControllerVersion.EAP_7_3_0);
+    }
+
     private void testRejections(final ModelTestControllerVersion controller) throws Exception {
         final ModelVersion version = getModelVersion(controller).getVersion();
         final String[] dependencies = getDependencies(controller);
@@ -368,6 +383,11 @@ public class JGroupsTransformersTestCase extends OperationTestCaseBase {
         FailedOperationTransformationConfig config = new FailedOperationTransformationConfig();
 
         PathAddress subsystemAddress = PathAddress.pathAddress(JGroupsSubsystemResourceDefinition.PATH);
+
+        if (JGroupsModel.VERSION_8_0_0.requiresTransformation(version)) {
+            config.addFailedAttribute(subsystemAddress.append(StackResourceDefinition.pathElement("credentialReference1")).append(ProtocolResourceDefinition.pathElement("SYM_ENCRYPT")),
+                    FailedOperationTransformationConfig.REJECTED_RESOURCE);
+        }
 
         if (JGroupsModel.VERSION_7_0_0.requiresTransformation(version)) {
             config.addFailedAttribute(subsystemAddress.append(StackResourceDefinition.WILDCARD_PATH).append(TransportResourceDefinition.pathElement("TCP_NIO2")), FailedOperationTransformationConfig.REJECTED_RESOURCE);

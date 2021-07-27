@@ -14,7 +14,7 @@ The _<authentication-client/>_ element can be added to the wildfly-config.xml co
 </configuration>
 ----
 
-_Note: A single wildfly-config.xml could be used by multiple projects using multiple versions of Wildfly Elytron, newer versions of WildFly Elytron will introduce new configuration using later namespace versions however they will still continue to support the previously released schemas until advertised otherwise.  For the configuration to be compatible with this either use a schema and namespace compatible with all the versions in use, or multiple authentication-client elements can be added, these should be added ordered by namespace youngest to oldest.  If a configuration with a later namespace is discovered by a newer WildFly Elytron client it will be used and parsing will not look for an older version as well._
+_Note: A single wildfly-config.xml could be used by multiple projects using multiple versions of WildFly Elytron, newer versions of WildFly Elytron will introduce new configuration using later namespace versions however they will still continue to support the previously released schemas until advertised otherwise.  For the configuration to be compatible with this either use a schema and namespace compatible with all the versions in use, or multiple authentication-client elements can be added, these should be added ordered by namespace youngest to oldest.  If a configuration with a later namespace is discovered by a newer WildFly Elytron client it will be used and parsing will not look for an older version as well._
 
 The _<authentication-client />_ configuration can contain the following sections: -
 
@@ -81,7 +81,15 @@ The <protection-paramter-credentials /> element can contain one more more child 
     <credential-store-reference store="..." alias="..." clear-text="..." />
     <clear-password password="..." />
     <masked-password algorithm="..." key-material="..." iteration-count="..." salt="..." masked-password="..." initialization-vector="..." />
-    <key-pair public-key-pem="..." private-key-pem="..." />
+    <key-pair>
+        <public-key-pem>...</public-key-pem>
+        <private-key-pem>...</public-key-pem>
+        <openssh-private-key pem="...">
+            <credential-store-reference store="..." alias="..." clear-text="..." />
+            <clear-password password="..." />
+            <masked-password algorithm="..." key-material="..." iteration-count="..." salt="..." masked-password="..." initialization-vector="..." />
+        </openssh-private-key>
+    </key-pair>
     <certificate private-key-pem="..." pem="..." />
     <public-key-pem>...</public-key-pem>
     <bearer-token value="..." />
@@ -350,7 +358,20 @@ The content of this element is the same as documented for [<protection-parameter
     <credential-store-reference store="..." alias="..." clear-text="..." />
     <clear-password password="..." />
     <masked-password algorithm="..." key-material="..." iteration-count="..." salt="..." masked-password="..." initialization-vector="..." />
-    <key-pair public-key-pem="..." private-key-pem="..." />
+    <key-pair>
+        <public-key-pem>...</public-key-pem>
+        <private-key-pem>...</public-key-pem>
+        <openssh-private-key pem="...">
+            <credential-store-reference store="..." alias="..." clear-text="..." />
+            <clear-password password="..." />
+            <masked-password algorithm="..." key-material="..." iteration-count="..." salt="..." masked-password="..." initialization-vector="..." />
+        </openssh-private-key>
+    </key-pair>
+    <ssh-credential ssh-directory="..." private-key-file="..." known-hosts-file="...">
+        <credential-store-reference store="..." alias="..." clear-text="..." />
+        <clear-password password="..." />
+        <masked-password algorithm="..." key-material="..." iteration-count="..." salt="..." masked-password="..." initialization-vector="..." />
+    </ssh-credential>
     <certificate private-key-pem="..." pem="..." />
     <public-key-pem>...</public-key-pem>
     <bearer-token value="..." />
@@ -382,13 +403,13 @@ The <ssl-contexts /> element holds individual names SSLContext definitions that 
 <?xml version="1.0" encoding="UTF-8"?>
 
 <configuration>
-    <authentication-client xmlns="urn:elytron:1.0">
+    <authentication-client xmlns="urn:elytron:1.4">
         <ssl-contexts>
             <default-ssl-context name="..."/>
             <ssl-context name="...">
                 <key-store-ssl-certificate>...</key-store-ssl-certificate>
                 <trust-store key-store-name="..." />
-                <cipher-suite selector="..." />
+                <cipher-suite selector="..." names="..." />
                 <protocol names="... ..." />
                 <provider-name name="..." />
                 <providers>...</providers>
@@ -424,22 +445,82 @@ This structure is identical to the structure use in [<key-store-credential />|#k
 
  <trust-store-key-store-name />:: A reference to a KeyStore that will be used to initialise the TrustManager.
 
- <cipher-suite-selector />:: Configuration to filter the enabled cipher suites, the format of the selector is [org.wildfly.security.ssl.CipherSuiteSelector.fromString(selector)|http://wildfly-security.github.io/wildfly-elytron/1.1.x/org/wildfly/security/ssl/CipherSuiteSelector.html#fromString-java.lang.String-].
+ <cipher-suite selector="..." names="..." />:: Configuration to filter the enabled cipher suites. This element must contain at least one of the following two attributes: -
 
-The following would be a cipher suite selector performing the default filtering.
+ selector:: _(Optional)_ Used to configure the enabled cipher suites for TLSv1.2 and below. The format of the `selector` attribute is described in detail
+ in http://wildfly-security.github.io/wildfly-elytron/master/org/wildfly/security/ssl/CipherSuiteSelector.html#fromString-java.lang.String-[org.wildfly.security.ssl.CipherSuiteSelector.fromString(selector)].
+ The default value is `DEFAULT`, which corresponds to all known cipher suites that do not have NULL encryption and excludes any cipher suites that have no authentication.
+
+ names:: _(Optional)_ Used to configure the enabled cipher suites for TLSv1.3. The format of the `names` attribute is a simple colon (":")
+ separated list of TLSv1.3 cipher suite names (e.g., `TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256`).
+ This attribute must be specified in order for TLSv1.3 to be enabled.
+
+The following example configuration specifies that the default filtering should be used for TLSv1.2 and below and specifies that the
+`TLS_AES_128_CCM_8_SHA256` and `TLS_AES_256_GCM_SHA384` cipher suites should be used for TLSv1.3.
 
 [source,xml,options="nowrap"]
 ----
-<cipher-suite selector="DEFAULT" />
+<cipher-suite selector="DEFAULT" names="TLS_AES_128_CCM_8_SHA256:TLS_AES_256_GCM_SHA384"/>
 ----
 
- <protocol />:: used to define a space separated list of the protocols to be supported.
+ <protocol names="..."/>:: Used to define a space separated list of the protocols to be supported. The default value is `TLSv1 TLSv1.1 TLSv1.2 TLSv1.3`. Note that the TLSv1.3 protocol will only be usable when running against JDK 11 or higher.
 
  <provider-name />:: Once the available providers have been identified only the provider with the name defined on this element will be used.
 
  <providers/>:: This element is described in more detail within [<providers />|#Providers] and overrides the default or inherited provider discovery with a definition specific to this SSLContext definition.
 
  <certificate-revocation-list />:: The presence of this element enabled checking the peer's certificate against a certificate revocation list, this element defines both a path to the certificate revocation list and also specifies the maximum number of non-self-issued intermediate certificates that may exist in a certification path
+
+ <certificate-revocation-lists />:: This element enables checking the peer's certificate against multiple certificate revocation lists. This element defines a list of certificate revocation list objects which define a path to the certificate revocation list,
+ and also the base path of the certificate revocation list file.
+
+NOTE: The certificate-revocation-list element can be substituted by a certificate-revocation-lists element which in turn allows the
+configuration of multiple certificate revocation lists as follows.
+
+[source,xml,options="nowrap"]
+----
+<configuration>
+    <authentication-client xmlns="urn:elytron:1.4">
+        <ssl-contexts>
+            <default-ssl-context name="..."/>
+            <ssl-context name="...">
+                ...
+                <certificate-revocation-lists>
+                    <certificate-revocation-list path="..." relative-to="..." />
+                    <certificate-revocation-list path="..." relative-to="..." />
+                </certificate-revocation-lists>
+            </ssl-context>
+        </ssl-contexts>
+    </authentication-client>
+</configuration>
+----
+
+=== Configuring SSLv2Hello
+
+Older JDK versions use ``SSLv2Hello`` during the initial SSL handshake message
+where the SSL/TLS version that will be used for the rest of the communication is
+negotiated.
+
+Using ``SSLv2Hello`` is discouraged, therefore newer JDK versions disable this protocol
+on the client by default. However, they do provide the ability to re-enable it if necessary.
+
+``SSLv2Hello`` can be configured as a supported protocol for the SSL context as follows:
+
+[source,options="nowrap"]
+----
+<protocol names="SSLv2Hello TLSv1">
+----
+
+=== WARNING:
+
+* The use of ``SSLv2Hello`` is strongly discouraged.
+
+* ``SSLv2Hello`` cannot be configured by itself, as its purpose is to determine
+which encryption protocols are supported by the server it connects to. It always
+needs to be configured along side another encryption protocol.
+
+* Additionally, IBM JDK does not support specifying ``SSLv2Hello`` in its client, although a
+server side connection always accepts this protocol.
 
 [[Providers]]
 == <providers />

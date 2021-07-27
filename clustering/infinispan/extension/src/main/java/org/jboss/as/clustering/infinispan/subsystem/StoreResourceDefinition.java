@@ -21,15 +21,18 @@
  */
 package org.jboss.as.clustering.infinispan.subsystem;
 
+import java.util.EnumSet;
 import java.util.function.UnaryOperator;
 
 import org.infinispan.configuration.cache.PersistenceConfiguration;
+import org.jboss.as.clustering.controller.AttributeTranslation;
 import org.jboss.as.clustering.controller.BinaryCapabilityNameResolver;
 import org.jboss.as.clustering.controller.ChildResourceDefinition;
 import org.jboss.as.clustering.controller.ManagementResourceRegistration;
-import org.jboss.as.clustering.controller.MetricHandler;
 import org.jboss.as.clustering.controller.Operations;
 import org.jboss.as.clustering.controller.PropertiesAttributeDefinition;
+import org.jboss.as.clustering.controller.ReadAttributeTranslationHandler;
+import org.jboss.as.clustering.controller.Registration;
 import org.jboss.as.clustering.controller.ResourceDescriptor;
 import org.jboss.as.clustering.controller.ResourceServiceConfiguratorFactory;
 import org.jboss.as.clustering.controller.ResourceServiceHandler;
@@ -43,6 +46,7 @@ import org.jboss.as.clustering.controller.transform.LegacyPropertyWriteOperation
 import org.jboss.as.clustering.controller.transform.SimpleOperationTransformer;
 import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.ModelVersion;
+import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.SimpleAttributeDefinitionBuilder;
 import org.jboss.as.controller.capability.RuntimeCapability;
@@ -61,7 +65,7 @@ import org.jboss.dmr.ModelType;
  * @author Richard Achmatowicz (c) 2011 Red Hat Inc.
  * @author Paul Ferraro
  */
-public abstract class StoreResourceDefinition extends ChildResourceDefinition<ManagementResourceRegistration> {
+public abstract class StoreResourceDefinition extends ChildResourceDefinition<ManagementResourceRegistration> implements ResourceServiceConfiguratorFactory {
 
     protected static final PathElement WILDCARD_PATH = pathElement(PathElement.WILDCARD_VALUE);
 
@@ -84,34 +88,24 @@ public abstract class StoreResourceDefinition extends ChildResourceDefinition<Ma
         }
     }
 
-    enum Attribute implements org.jboss.as.clustering.controller.Attribute, UnaryOperator<SimpleAttributeDefinitionBuilder> {
-        FETCH_STATE("fetch-state", true),
+    enum Attribute implements org.jboss.as.clustering.controller.Attribute {
+        FETCH_STATE("fetch-state", ModelType.BOOLEAN, ModelNode.TRUE),
         MAX_BATCH_SIZE("max-batch-size", ModelType.INT, new ModelNode(100)),
-        PASSIVATION("passivation", true),
-        PRELOAD("preload", false),
-        PURGE("purge", true),
-        SHARED("shared", false),
-        SINGLETON("singleton", false) {
-            @Override
-            public SimpleAttributeDefinitionBuilder apply(SimpleAttributeDefinitionBuilder builder) {
-                return builder.setDeprecated(InfinispanModel.VERSION_5_0_0.getVersion());
-            }
-        },
+        PASSIVATION("passivation", ModelType.BOOLEAN, ModelNode.TRUE),
+        PRELOAD("preload", ModelType.BOOLEAN, ModelNode.FALSE),
+        PURGE("purge", ModelType.BOOLEAN, ModelNode.TRUE),
+        SHARED("shared", ModelType.BOOLEAN, ModelNode.FALSE),
         PROPERTIES("properties"),
         ;
         private final AttributeDefinition definition;
 
-        Attribute(String name, boolean defaultValue) {
-            this(name, ModelType.BOOLEAN, new ModelNode(defaultValue));
-        }
-
         Attribute(String name, ModelType type, ModelNode defaultValue) {
-            this.definition = this.apply(new SimpleAttributeDefinitionBuilder(name, type)
+            this.definition = new SimpleAttributeDefinitionBuilder(name, type)
                     .setAllowExpression(true)
                     .setRequired(false)
                     .setDefaultValue(defaultValue)
                     .setFlags(AttributeAccess.Flag.RESTART_RESOURCE_SERVICES)
-                    ).build();
+                    .build();
         }
 
         Attribute(String name) {
@@ -125,10 +119,64 @@ public abstract class StoreResourceDefinition extends ChildResourceDefinition<Ma
         public AttributeDefinition getDefinition() {
             return this.definition;
         }
+    }
+
+    @Deprecated
+    enum DeprecatedAttribute implements org.jboss.as.clustering.controller.Attribute {
+        SINGLETON("singleton", ModelType.BOOLEAN, ModelNode.FALSE, InfinispanModel.VERSION_5_0_0),
+        ;
+        private final AttributeDefinition definition;
+
+        DeprecatedAttribute(String name, ModelType type, ModelNode defaultValue, InfinispanModel deprecation) {
+            this.definition = new SimpleAttributeDefinitionBuilder(name, type)
+                    .setAllowExpression(true)
+                    .setRequired(false)
+                    .setDefaultValue(defaultValue)
+                    .setFlags(AttributeAccess.Flag.RESTART_NONE)
+                    .setDeprecated(deprecation.getVersion())
+                    .build();
+        }
 
         @Override
-        public SimpleAttributeDefinitionBuilder apply(SimpleAttributeDefinitionBuilder builder) {
-            return builder;
+        public AttributeDefinition getDefinition() {
+            return this.definition;
+        }
+    }
+
+    enum DeprecatedMetric implements AttributeTranslation, UnaryOperator<PathAddress>, Registration<ManagementResourceRegistration> {
+        CACHE_LOADER_LOADS(StoreMetric.CACHE_LOADER_LOADS),
+        CACHE_LOADER_MISSES(StoreMetric.CACHE_LOADER_MISSES),
+        ;
+        private final AttributeDefinition definition;
+        private final org.jboss.as.clustering.controller.Attribute targetAttribute;
+
+        DeprecatedMetric(StoreMetric metric) {
+            this.targetAttribute = metric;
+            this.definition = new SimpleAttributeDefinitionBuilder(metric.getName(), metric.getDefinition().getType())
+                    .setDeprecated(InfinispanModel.VERSION_11_0_0.getVersion())
+                    .setStorageRuntime()
+                    .build();
+        }
+
+        @Override
+        public void register(ManagementResourceRegistration registration) {
+            registration.registerReadOnlyAttribute(this.definition, new ReadAttributeTranslationHandler(this));
+        }
+
+        @Override
+        public org.jboss.as.clustering.controller.Attribute getTargetAttribute() {
+            return this.targetAttribute;
+        }
+
+        @Override
+        public UnaryOperator<PathAddress> getPathAddressTransformation() {
+            return this;
+        }
+
+        @Override
+        public PathAddress apply(PathAddress address) {
+            PathAddress cacheAddress = address.getParent();
+            return cacheAddress.getParent().append(CacheRuntimeResourceDefinition.pathElement(cacheAddress.getLastElement().getValue()), PersistenceRuntimeResourceDefinition.PATH);
         }
     }
 
@@ -160,13 +208,11 @@ public abstract class StoreResourceDefinition extends ChildResourceDefinition<Ma
 
     private final PathElement legacyPath;
     private final UnaryOperator<ResourceDescriptor> configurator;
-    private final ResourceServiceHandler handler;
 
-    protected StoreResourceDefinition(PathElement path, PathElement legacyPath, ResourceDescriptionResolver resolver, UnaryOperator<ResourceDescriptor> configurator, ResourceServiceConfiguratorFactory serviceConfiguratorFactory) {
+    protected StoreResourceDefinition(PathElement path, PathElement legacyPath, ResourceDescriptionResolver resolver, UnaryOperator<ResourceDescriptor> configurator) {
         super(path, resolver);
         this.legacyPath = legacyPath;
         this.configurator = configurator;
-        this.handler = new SimpleResourceServiceHandler(serviceConfiguratorFactory);
     }
 
     @SuppressWarnings("deprecation")
@@ -178,14 +224,18 @@ public abstract class StoreResourceDefinition extends ChildResourceDefinition<Ma
         }
 
         ResourceDescriptor descriptor = this.configurator.apply(new ResourceDescriptor(this.getResourceDescriptionResolver()))
-                .addAttributes(StoreResourceDefinition.Attribute.class)
+                .addAttributes(Attribute.class)
+                .addIgnoredAttributes(DeprecatedAttribute.class)
                 .addCapabilities(Capability.class)
                 .addRequiredSingletonChildren(StoreWriteThroughResourceDefinition.PATH)
                 ;
-        new SimpleResourceRegistration(descriptor, this.handler).register(registration);
+        ResourceServiceHandler handler = new SimpleResourceServiceHandler(this);
+        new SimpleResourceRegistration(descriptor, handler).register(registration);
 
         if (registration.isRuntimeOnlyRegistrationValid()) {
-            new MetricHandler<>(new StoreMetricExecutor(), StoreMetric.class).register(registration);
+            for (DeprecatedMetric metric : EnumSet.allOf(DeprecatedMetric.class)) {
+                metric.register(registration);
+            }
         }
 
         new StoreWriteBehindResourceDefinition().register(registration);

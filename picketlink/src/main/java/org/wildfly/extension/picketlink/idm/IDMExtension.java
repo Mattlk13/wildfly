@@ -34,12 +34,10 @@ import org.jboss.as.controller.descriptions.ResourceDescriptionResolver;
 import org.jboss.as.controller.descriptions.DeprecatedResourceDescriptionResolver;
 import org.jboss.as.controller.parsing.ExtensionParsingContext;
 import org.jboss.as.controller.transform.description.DiscardAttributeChecker;
-import org.jboss.as.controller.transform.description.DiscardAttributeChecker.DiscardAttributeValueChecker;
 import org.jboss.as.controller.transform.description.RejectAttributeChecker;
 import org.jboss.as.controller.transform.description.ResourceTransformationDescriptionBuilder;
 import org.jboss.as.controller.transform.description.TransformationDescription.Tools;
 import org.jboss.as.controller.transform.description.TransformationDescriptionBuilder;
-import org.jboss.dmr.ModelNode;
 import org.wildfly.extension.picketlink.idm.model.IdentityConfigurationResourceDefinition;
 import org.wildfly.extension.picketlink.idm.model.LDAPStoreResourceDefinition;
 import org.wildfly.extension.picketlink.idm.model.PartitionManagerResourceDefinition;
@@ -63,7 +61,7 @@ public class IDMExtension implements Extension {
 
     @Override
     public void initialize(ExtensionContext context) {
-        SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME, CURRENT_MODEL_VERSION);
+        SubsystemRegistration subsystem = context.registerSubsystem(SUBSYSTEM_NAME, CURRENT_MODEL_VERSION, true);
 
         subsystem.registerSubsystemModel(IDMSubsystemRootResourceDefinition.INSTANCE);
         subsystem.registerXMLElementWriter(Namespace.CURRENT.getXMLWriter());
@@ -82,10 +80,9 @@ public class IDMExtension implements Extension {
         ResourceTransformationDescriptionBuilder ldapTransfDescBuilder = identityConfigResourceBuilder
                 .addChildResource(LDAPStoreResourceDefinition.INSTANCE);
 
-        ldapTransfDescBuilder.getAttributeBuilder().addRejectCheck(RejectAttributeChecker.DEFINED,
-                LDAPStoreResourceDefinition.ACTIVE_DIRECTORY)
-                .setDiscard(new DiscardAttributeValueChecker(ModelNode.FALSE),
-                        LDAPStoreResourceDefinition.ACTIVE_DIRECTORY);
+        ldapTransfDescBuilder.getAttributeBuilder()
+                .addRejectCheck(RejectAttributeChecker.DEFINED, LDAPStoreResourceDefinition.ACTIVE_DIRECTORY)
+                .setDiscard(DiscardAttributeChecker.DEFAULT_VALUE, LDAPStoreResourceDefinition.ACTIVE_DIRECTORY);
 
         ldapTransfDescBuilder.getAttributeBuilder().addRejectCheck(RejectAttributeChecker.DEFINED,
                 LDAPStoreResourceDefinition.UNIQUE_ID_ATTRIBUTE_NAME)

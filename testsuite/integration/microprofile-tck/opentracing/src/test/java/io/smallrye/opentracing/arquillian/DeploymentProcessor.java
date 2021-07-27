@@ -65,14 +65,12 @@ public class DeploymentProcessor implements ApplicationArchiveProcessor {
             extensionsJar.addAsServiceProvider(TracerResolver.class, MockTracerResolver.class);
 
             WebArchive war = WebArchive.class.cast(archive);
-            war.addAsWebInfResource(DeploymentProcessor.class.getPackage(), "jboss-deployment-structure.xml",
-                    "jboss-deployment-structure.xml");
             war.addAsLibraries(extensionsJar);
 
             final File archiveDir = new File("target/archives");
             archiveDir.mkdirs();
             File moduleFile = new File(archiveDir, "testapp.war");
-            war.as(ZipExporter.class).exportTo(moduleFile);
+            war.as(ZipExporter.class).exportTo(moduleFile, true);
         }
     }
 }

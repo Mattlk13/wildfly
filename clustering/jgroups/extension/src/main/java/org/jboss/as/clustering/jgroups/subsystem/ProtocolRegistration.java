@@ -36,8 +36,8 @@ import org.jboss.as.controller.ModelVersion;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.registry.ManagementResourceRegistration;
 import org.jboss.as.controller.transform.description.ResourceTransformationDescriptionBuilder;
+import org.jgroups.Global;
 import org.jgroups.PhysicalAddress;
-import org.jgroups.conf.ProtocolConfiguration;
 import org.jgroups.protocols.MERGE3;
 import org.jgroups.protocols.UNICAST3;
 import org.jgroups.protocols.pbcast.NAKACK2;
@@ -103,7 +103,7 @@ public class ProtocolRegistration implements Registration<ManagementResourceRegi
 
         LegacyProtocol(String name, Class<? extends Protocol> targetProtocol, JGroupsModel deprecation) {
             this.name = (name != null) ? name : this.name();
-            this.targetName = targetProtocol.getName().substring(ProtocolConfiguration.protocol_prefix.length() + 1);
+            this.targetName = targetProtocol.getName().substring(Global.PREFIX.length());
             this.deprecation = deprecation;
         }
     }
@@ -220,8 +220,10 @@ public class ProtocolRegistration implements Registration<ManagementResourceRegi
             new GenericProtocolResourceDefinition(protocol.name(), JGroupsModel.VERSION_5_0_0, this.configurator, this.parentServiceConfiguratorFactory).register(registration);
         }
 
-        for (LegacyProtocol protocol : EnumSet.allOf(LegacyProtocol.class)) {
-            new LegacyProtocolResourceDefinition(protocol.name, protocol.targetName, protocol.deprecation, this.configurator, this.parentServiceConfiguratorFactory).register(registration);
+        if (registration.getProcessType().isServer()) { // only auto-update legacy protocols in server processes
+            for (LegacyProtocol protocol : EnumSet.allOf(LegacyProtocol.class)) {
+                new LegacyProtocolResourceDefinition(protocol.name, protocol.targetName, protocol.deprecation, this.configurator, this.parentServiceConfiguratorFactory).register(registration);
+            }
         }
     }
 }

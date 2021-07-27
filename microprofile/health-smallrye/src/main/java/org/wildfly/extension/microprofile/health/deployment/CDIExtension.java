@@ -23,78 +23,121 @@
 package org.wildfly.extension.microprofile.health.deployment;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 import javax.enterprise.event.Observes;
+import javax.enterprise.inject.Instance;
 import javax.enterprise.inject.spi.AfterDeploymentValidation;
-import javax.enterprise.inject.spi.AnnotatedType;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.BeforeShutdown;
 import javax.enterprise.inject.spi.Extension;
 import javax.enterprise.inject.spi.ProcessAnnotatedType;
-import javax.enterprise.inject.spi.Unmanaged;
-import javax.enterprise.inject.spi.Unmanaged.UnmanagedInstance;
-import javax.enterprise.inject.spi.WithAnnotations;
+import javax.enterprise.util.AnnotationLiteral;
 
 import io.smallrye.health.SmallRyeHealthReporter;
-import org.eclipse.microprofile.health.Health;
+import org.eclipse.microprofile.config.Config;
+import org.eclipse.microprofile.config.ConfigProvider;
 import org.eclipse.microprofile.health.HealthCheck;
-import org.wildfly.extension.microprofile.health._private.MicroProfileHealthLogger;
+import org.eclipse.microprofile.health.HealthCheckResponse;
+import org.eclipse.microprofile.health.Liveness;
+import org.eclipse.microprofile.health.Readiness;
+import org.jboss.modules.Module;
+import org.wildfly.extension.microprofile.health.MicroProfileHealthReporter;
 
 /**
  * @author <a href="http://jmesnil.net/">Jeff Mesnil</a> (c) 2017 Red Hat inc.
  */
 public class CDIExtension implements Extension {
 
-    private final SmallRyeHealthReporter healthReporter;
-    private List<AnnotatedType<? extends HealthCheck>> delegates = new ArrayList<>();
-    private Collection<UnmanagedInstance<HealthCheck>> healthCheckInstances = new ArrayList<>();
+    private final MicroProfileHealthReporter reporter;
+    private final Module module;
 
-    public CDIExtension(SmallRyeHealthReporter healthReporter) {
-        this.healthReporter = healthReporter;
+    // Use a single Jakarta Contexts and Dependency Injection instance to select and destroy all HealthCheck probes instances
+    private Instance<Object> instance;
+    private final List<HealthCheck> livenessChecks = new ArrayList<>();
+    private final List<HealthCheck> readinessChecks = new ArrayList<>();
+    private HealthCheck defaultReadinessCheck;
+
+
+    public CDIExtension(MicroProfileHealthReporter healthReporter, Module module) {
+        this.reporter = healthReporter;
+        this.module = module;
+
     }
 
     /**
-     * Discover all classes that implements HealthCheckProcedure
-     */
-    public void observeResources(@Observes @WithAnnotations({Health.class})  ProcessAnnotatedType<? extends HealthCheck> event) {
-        AnnotatedType<? extends HealthCheck> annotatedType = event.getAnnotatedType();
-        Class<? extends HealthCheck> javaClass = annotatedType.getJavaClass();
-        MicroProfileHealthLogger.LOGGER.infof("Discovered health check procedure %s", javaClass);
-        delegates.add(annotatedType);
-    }
-
-    /**
-     * Instantiates <em>unmanaged instances</em> of HealthCheckProcedure and
-     * handle manually their CDI creation lifecycle.
-     * Add them to the {@link SmallRyeHealthReporter}.
+     * Get Jakarta Contexts and Dependency Injection <em>instances</em> of HealthCheck and
+     * add them to the {@link MicroProfileHealthReporter}.
      */
     private void afterDeploymentValidation(@Observes final AfterDeploymentValidation avd, BeanManager bm) {
-        for (AnnotatedType delegate : delegates) {
-            try {
-                Unmanaged<HealthCheck> unmanagedHealthCheck = new Unmanaged<HealthCheck>(bm, delegate.getJavaClass());
-                UnmanagedInstance<HealthCheck> healthCheckInstance = unmanagedHealthCheck.newInstance();
-                HealthCheck healthCheck =  healthCheckInstance.produce().inject().postConstruct().get();
-                healthCheckInstances.add(healthCheckInstance);
-                healthReporter.addHealthCheck(healthCheck);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to register health bean", e);
+        instance = bm.createInstance();
+
+        addHealthChecks(Liveness.Literal.INSTANCE, reporter::addLivenessCheck, livenessChecks);
+        addHealthChecks(Readiness.Literal.INSTANCE, reporter::addReadinessCheck, readinessChecks);
+        if (readinessChecks.isEmpty()) {
+            Config config = ConfigProvider.getConfig(module.getClassLoader());
+            boolean disableDefaultprocedure = config.getOptionalValue("mp.health.disable-default-procedures", Boolean.class).orElse(false);
+            if (!disableDefaultprocedure) {
+                // no readiness probe are present in the deployment. register a readiness check so that the deployment is considered ready
+                defaultReadinessCheck = new DefaultReadinessHealthCheck(module.getName());
+                reporter.addReadinessCheck(defaultReadinessCheck, module.getClassLoader());
             }
+        }
+    }
+
+    private void addHealthChecks(AnnotationLiteral qualifier,
+                                 BiConsumer<HealthCheck, ClassLoader> healthFunction, List<HealthCheck> healthChecks) {
+        for (HealthCheck healthCheck : instance.select(HealthCheck.class, qualifier)) {
+            healthFunction.accept(healthCheck, module.getClassLoader());
+            healthChecks.add(healthCheck);
         }
     }
 
     /**
      * Called when the deployment is undeployed.
-     *
-     * Remove all the instances of {@link HealthCheck} from the {@link SmallRyeHealthReporter}.
-     * Handle manually their CDI destroy lifecycle.
+     * <p>
+     * Remove all the instances of {@link HealthCheck} from the {@link MicroProfileHealthReporter}.
      */
-    public void close(@Observes final BeforeShutdown bs) {
-        healthCheckInstances.forEach(healthCheck -> {
-            healthReporter.removeHealthCheck(healthCheck.get());
-            healthCheck.preDestroy().dispose();
-        });
-        healthCheckInstances.clear();
+    public void beforeShutdown(@Observes final BeforeShutdown bs) {
+        removeHealthCheck(livenessChecks, reporter::removeLivenessCheck);
+        removeHealthCheck(readinessChecks, reporter::removeReadinessCheck);
+
+        if (defaultReadinessCheck != null) {
+            reporter.removeReadinessCheck(defaultReadinessCheck);
+            defaultReadinessCheck = null;
+        }
+
+        instance = null;
+    }
+
+    private void removeHealthCheck(List<HealthCheck> healthChecks,
+                                   Consumer<HealthCheck> healthFunction) {
+        for (HealthCheck healthCheck : healthChecks) {
+            healthFunction.accept(healthCheck);
+            instance.destroy(healthCheck);
+        }
+        healthChecks.clear();
+    }
+
+    public void vetoSmallryeHealthReporter(@Observes ProcessAnnotatedType<SmallRyeHealthReporter> pat) {
+        pat.veto();
+    }
+
+    private static final class DefaultReadinessHealthCheck implements HealthCheck {
+
+        private final String deploymentName;
+
+        DefaultReadinessHealthCheck(String deploymentName) {
+            this.deploymentName = deploymentName;
+        }
+
+        @Override
+        public HealthCheckResponse call() {
+            return HealthCheckResponse.named("ready-" + deploymentName)
+                    .up()
+                    .build();
+        }
     }
 }

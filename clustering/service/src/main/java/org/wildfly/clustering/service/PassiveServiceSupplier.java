@@ -29,8 +29,12 @@ import org.jboss.msc.service.ServiceRegistry;
 
 /**
  * Returns the value supplied by a {@link Service}, or null if service is not installed or not started.
+ * If used within the context of a management operation, the requisite {@link ServiceRegistry} can be obtained via:
+ * <code>OperationContext.getServiceRegistry(false)</code> thus avoiding locking of the service registry,
+ * since the state of the target service will be unaffected by the logic in {@link ServiceSupplier#get()}.
  * @author Paul Ferraro
  */
+@Deprecated
 public class PassiveServiceSupplier<T> extends ServiceSupplier<T> {
 
     public PassiveServiceSupplier(ServiceRegistry target, ServiceName name) {

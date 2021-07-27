@@ -26,6 +26,10 @@ import static java.lang.Thread.currentThread;
 import static java.security.AccessController.doPrivileged;
 import static org.jboss.as.connector.logging.ConnectorLogger.DS_DEPLOYER_LOGGER;
 
+import javax.naming.Reference;
+import javax.resource.spi.ManagedConnectionFactory;
+import javax.sql.DataSource;
+import javax.sql.XADataSource;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -37,12 +41,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
-
-import javax.naming.Reference;
-import javax.resource.spi.ManagedConnectionFactory;
-import javax.security.auth.Subject;
-import javax.sql.DataSource;
-import javax.sql.XADataSource;
 
 import org.jboss.as.connector.logging.ConnectorLogger;
 import org.jboss.as.connector.metadata.api.common.Credential;
@@ -160,8 +158,12 @@ public abstract class AbstractDataSourceService implements Service<DataSource> {
             final ServiceContainer container = startContext.getController().getServiceContainer();
 
             deploymentMD = getDeployer().deploy(container);
-            if (deploymentMD.getCfs().length != 1) {
-                throw ConnectorLogger.ROOT_LOGGER.cannotStartDs();
+            final Object[] cfs = deploymentMD.getCfs();
+            if (cfs.length == 0) {
+                throw ConnectorLogger.ROOT_LOGGER.cannotStartDSNoConnectionFactory(jndiName.getAbsoluteJndiName());
+            } else if (cfs.length >= 2) {
+                throw ConnectorLogger.ROOT_LOGGER.cannotStartDSTooManyConnectionFactories(jndiName.getAbsoluteJndiName(),
+                        cfs.length);
             }
             sqlDataSource = new WildFlyDataSource((javax.sql.DataSource) deploymentMD.getCfs()[0], jndiName.getAbsoluteJndiName());
             DS_DEPLOYER_LOGGER.debugf("Adding datasource: %s", deploymentMD.getCfJndiNames()[0]);
@@ -499,22 +501,7 @@ public abstract class AbstractDataSourceService implements Service<DataSource> {
             } else if (securityDomain == null || securityDomain.trim().equals("") || subjectFactory.getOptionalValue() == null) {
                 return null;
             } else {
-                return new PicketBoxSubjectFactory(subjectFactory.getValue()){
-                    @Override
-                    public Subject createSubject(final String sd) {
-                        ServerSecurityManager sm = secManager.getOptionalValue();
-                        if (sm != null) {
-                            sm.push(sd);
-                        }
-                        try {
-                            return super.createSubject(sd);
-                        } finally {
-                            if (sm != null) {
-                                sm.pop();
-                            }
-                        }
-                    }
-                };
+                return new PicketBoxSubjectFactory(subjectFactory.getValue());
             }
         }
 

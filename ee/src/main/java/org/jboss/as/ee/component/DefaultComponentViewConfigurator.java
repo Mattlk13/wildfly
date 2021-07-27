@@ -23,6 +23,7 @@
 package org.jboss.as.ee.component;
 
 import java.io.Serializable;
+import java.lang.reflect.Constructor;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jboss.as.ee.logging.EeLogger;
@@ -78,9 +79,26 @@ class DefaultComponentViewConfigurator extends AbstractComponentConfigurator imp
                 }
             }
 
+            Class<?> markupClass;
+            try {
+                if (view.getMarkupClassName() != null) {
+                    markupClass = module.getClassLoader().loadClass(view.getMarkupClassName());
+                    proxyConfiguration.addAdditionalInterface(markupClass);
+                }
+            } catch (ClassNotFoundException e) {
+                throw EeLogger.ROOT_LOGGER.cannotLoadViewClass(e, view.getMarkupClassName(), configuration);
+            }
+
             //we define it in the modules class loader to prevent permgen leaks
             if (viewClass.isInterface()) {
-                proxyConfiguration.setSuperClass(Object.class);
+                final Class<?> componentClass = configuration.getComponentClass();
+                Constructor<?> defaultConstructor = null;
+                try {
+                    defaultConstructor = componentClass.getConstructor();
+                } catch (Exception e) {
+                    //ignore
+                }
+                proxyConfiguration.setSuperClass(defaultConstructor == null ? Object.class : componentClass);
                 proxyConfiguration.addAdditionalInterface(viewClass);
                 viewConfiguration = view.createViewConfiguration(viewClass, configuration, new ProxyFactory(proxyConfiguration));
             } else {

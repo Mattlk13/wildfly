@@ -24,14 +24,16 @@ package org.jboss.as.clustering.infinispan.subsystem.remote;
 
 import org.jboss.as.clustering.controller.ManagementResourceRegistration;
 import org.jboss.as.clustering.controller.ResourceDescriptor;
-import org.jboss.as.clustering.controller.ResourceServiceHandler;
 import org.jboss.as.clustering.controller.SimpleResourceRegistration;
-import org.jboss.as.clustering.controller.SimpleResourceServiceHandler;
+import org.jboss.as.clustering.infinispan.subsystem.InfinispanModel;
 import org.jboss.as.controller.AttributeDefinition;
 import org.jboss.as.controller.ModelVersion;
+import org.jboss.as.controller.PathAddress;
 import org.jboss.as.controller.PathElement;
 import org.jboss.as.controller.SimpleAttributeDefinitionBuilder;
 import org.jboss.as.controller.registry.AttributeAccess;
+import org.jboss.as.controller.transform.TransformationContext;
+import org.jboss.as.controller.transform.description.AttributeConverter;
 import org.jboss.as.controller.transform.description.ResourceTransformationDescriptionBuilder;
 import org.jboss.dmr.ModelNode;
 import org.jboss.dmr.ModelType;
@@ -41,21 +43,21 @@ import org.jboss.dmr.ModelType;
  *
  * @author Radoslav Husar
  */
+@Deprecated
 public class InvalidationNearCacheResourceDefinition extends NearCacheResourceDefinition {
 
     public static final PathElement PATH = pathElement("invalidation");
 
     public enum Attribute implements org.jboss.as.clustering.controller.Attribute {
-        MAX_ENTRIES("max-entries", ModelType.INT, new ModelNode(-1)),
+        MAX_ENTRIES("max-entries", ModelType.INT),
         ;
 
         private final AttributeDefinition definition;
 
-        Attribute(String name, ModelType type, ModelNode defaultValue) {
+        Attribute(String name, ModelType type) {
             this.definition = new SimpleAttributeDefinitionBuilder(name, type)
                     .setAllowExpression(true)
                     .setRequired(false)
-                    .setDefaultValue(defaultValue)
                     .setFlags(AttributeAccess.Flag.RESTART_RESOURCE_SERVICES)
                     .build();
         }
@@ -67,7 +69,17 @@ public class InvalidationNearCacheResourceDefinition extends NearCacheResourceDe
     }
 
     static void buildTransformation(ModelVersion version, ResourceTransformationDescriptionBuilder parent) {
-        // No transformations yet
+        ResourceTransformationDescriptionBuilder builder = parent.addChildResource(PATH);
+        if (InfinispanModel.VERSION_11_0_0.requiresTransformation(version)) {
+            builder.getAttributeBuilder().setValueConverter(new AttributeConverter.DefaultAttributeConverter() {
+                @Override
+                protected void convertAttribute(PathAddress address, String attributeName, ModelNode attributeValue, TransformationContext context) {
+                    if (!attributeValue.isDefined()) {
+                        attributeValue.set(-1);
+                    }
+                }
+            }, Attribute.MAX_ENTRIES.getDefinition());
+        }
     }
 
     InvalidationNearCacheResourceDefinition() {
@@ -80,10 +92,9 @@ public class InvalidationNearCacheResourceDefinition extends NearCacheResourceDe
         ManagementResourceRegistration registration = parent.registerSubModel(this);
 
         ResourceDescriptor descriptor = new ResourceDescriptor(this.getResourceDescriptionResolver())
-                .addAttributes(InvalidationNearCacheResourceDefinition.Attribute.class)
+                .addIgnoredAttributes(InvalidationNearCacheResourceDefinition.Attribute.class)
                 ;
-        ResourceServiceHandler handler = new SimpleResourceServiceHandler(InvalidationNearCacheServiceConfigurator::new);
-        new SimpleResourceRegistration(descriptor, handler).register(registration);
+        new SimpleResourceRegistration(descriptor, null).register(registration);
 
         return registration;
     }

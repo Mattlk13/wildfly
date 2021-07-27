@@ -24,6 +24,7 @@ package org.jboss.as.test.integration.messaging.jms.external;
 import static org.jboss.as.controller.client.helpers.ClientConstants.ADD;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP;
 import static org.jboss.as.controller.descriptions.ModelDescriptionConstants.OP_ADDR;
+import static org.jboss.as.test.shared.integration.ejb.security.PermissionUtils.createPermissionsXmlAsset;
 import static org.jboss.shrinkwrap.api.ShrinkWrap.create;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -32,6 +33,7 @@ import java.io.IOException;
 import java.net.URL;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.util.PropertyPermission;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -74,7 +76,10 @@ import org.junit.runner.RunWith;
 public class DiscoveryGroupExternalMessagingDeploymentTestCase {
 
     public static final boolean SKIP = AccessController.doPrivileged((PrivilegedAction<Boolean>) () -> {
-                return Util.checkForWindows() && (Util.getIpStackType() == StackType.IPv6);
+                boolean badIPv6System = Util.checkForWindows() ||
+                                // https://issues.redhat.com/browse/WFLY-14070
+                                "true".equals(System.getenv().get("GITHUB_ACTIONS"));
+                return badIPv6System && (Util.getIpStackType() == StackType.IPv6);
             });
     public static final String QUEUE_LOOKUP = "java:/jms/DependentMessagingDeploymentTestCase/myQueue";
     public static final String TOPIC_LOOKUP = "java:/jms/DependentMessagingDeploymentTestCase/myTopic";
@@ -84,7 +89,7 @@ public class DiscoveryGroupExternalMessagingDeploymentTestCase {
     private static final String TOPIC_NAME = "myTopic";
     private static final String DISCOVERY_GROUP_NAME = "dg1";
     private static final String MULTICAST_SOCKET_BINDING = "messaging-group";
-   private static final String TESTSUITE_MCAST = System.getProperty("mcast", "230.0.0.4");
+    private static final String TESTSUITE_MCAST = System.getProperty("mcast", "230.0.0.4");
 
     @ArquillianResource
     private URL url;
@@ -100,7 +105,7 @@ public class DiscoveryGroupExternalMessagingDeploymentTestCase {
                 logger.info("[WFCI-32] Disable on Windows+IPv6 until CI environment is fixed");
                 return;
             }
-            ServerReload.executeReloadAndWaitForCompletion(managementClient.getControllerClient(), true);
+            ServerReload.executeReloadAndWaitForCompletion(managementClient, true);
             JMSOperations ops = JMSOperationsProvider.getInstance(managementClient.getControllerClient());
             ops.createJmsQueue(QUEUE_NAME, "/queue/" + QUEUE_NAME);
             ops.createJmsTopic(TOPIC_NAME, "/topic/" + TOPIC_NAME);
@@ -124,7 +129,7 @@ public class DiscoveryGroupExternalMessagingDeploymentTestCase {
             op.get("entries").add(QUEUE_LOOKUP);
             op.get("entries").add("/topic/myAwesomeClientQueue");
             execute(managementClient, op, true);
-            ServerReload.executeReloadAndWaitForCompletion(managementClient.getControllerClient());
+            ServerReload.executeReloadAndWaitForCompletion(managementClient);
         }
 
         private ModelNode execute(final org.jboss.as.arquillian.container.ManagementClient managementClient, final ModelNode op, final boolean expectSuccess) throws IOException {
@@ -171,7 +176,7 @@ public class DiscoveryGroupExternalMessagingDeploymentTestCase {
         ModelNode addClientDiscoveryGroup(String name, String socketBinding) {
             ModelNode address = new ModelNode();
             address.add("subsystem", "messaging-activemq");
-            address.add("discovery-group", name);
+            address.add("socket-discovery-group", name);
 
             ModelNode add = new ModelNode();
             add.get(OP).set(ADD);
@@ -196,7 +201,7 @@ public class DiscoveryGroupExternalMessagingDeploymentTestCase {
 
         ModelNode createDiscoveryGroupWithSocketBinding(ModelNode serverAddress, String discoveryGroupName, String socketBinding) throws Exception {
             ModelNode address = serverAddress.clone();
-            address.add("discovery-group", discoveryGroupName);
+            address.add("socket-discovery-group", discoveryGroupName);
             ModelNode op = Operations.createAddOperation(address);
             op.get("socket-binding").set(socketBinding);
             return op;
@@ -204,7 +209,7 @@ public class DiscoveryGroupExternalMessagingDeploymentTestCase {
 
         ModelNode createBroadcastGroupWithSocketBinding(ModelNode serverAddress, String broadcastGroupName, String socketBinding, String connector) throws Exception {
             ModelNode address = serverAddress.clone();
-            address.add("broadcast-group", broadcastGroupName);
+            address.add("socket-broadcast-group", broadcastGroupName);
             ModelNode op = Operations.createAddOperation(address);
             op.get("socket-binding").set(socketBinding);
             op.get("connectors").add(connector);
@@ -229,9 +234,12 @@ public class DiscoveryGroupExternalMessagingDeploymentTestCase {
                     .addAsWebResource(new StringAsset("Root file"), "root-file.txt");
         }
         return create(WebArchive.class, "ClientMessagingDeploymentTestCase.war")
-                .addClass(MessagingServlet.class)
+                .addClasses(MessagingServlet.class, TimeoutUtil.class)
                 .addClasses(QueueMDB.class, TopicMDB.class)
-                .addAsWebInfResource(EmptyAsset.INSTANCE, "beans.xml");
+                .addAsWebInfResource(EmptyAsset.INSTANCE, "beans.xml")
+                .addAsManifestResource(createPermissionsXmlAsset(
+                        new PropertyPermission(TimeoutUtil.FACTOR_SYS_PROP, "read")
+                ), "permissions.xml");
     }
 
     @BeforeClass

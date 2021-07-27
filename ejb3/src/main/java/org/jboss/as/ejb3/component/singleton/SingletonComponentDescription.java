@@ -90,8 +90,8 @@ public class SingletonComponentDescription extends SessionBeanComponentDescripti
      * @param ejbJarDescription  the module description
      */
     public SingletonComponentDescription(final String componentName, final String componentClassName, final EjbJarDescription ejbJarDescription,
-                                         final ServiceName deploymentUnitServiceName, final SessionBeanMetaData descriptorData) {
-        super(componentName, componentClassName, ejbJarDescription, deploymentUnitServiceName, descriptorData);
+                                         final DeploymentUnit deploymentUnit, final SessionBeanMetaData descriptorData) {
+        super(componentName, componentClassName, ejbJarDescription, deploymentUnit, descriptorData);
 
         getConfigurators().add(new ComponentConfigurator() {
             @Override
@@ -112,7 +112,9 @@ public class SingletonComponentDescription extends SessionBeanComponentDescripti
         ComponentConfiguration singletonComponentConfiguration = new ComponentConfiguration(this, classIndex, moduleClassLoader, moduleLoader);
         // setup the component create service
         singletonComponentConfiguration.setComponentCreateServiceFactory(new SingletonComponentCreateServiceFactory(this.isInitOnStartup(), dependsOn));
-        if(isExplicitSecurityDomainConfigured()) {
+        final boolean definedSecurityDomain = getDefinedSecurityDomain() != null;
+        final boolean securityRequired = hasBeanLevelSecurityMetadata();
+        if (securityRequired) {
             getConfigurators().add(new ComponentConfigurator() {
                     @Override
                     public void configure(final DeploymentPhaseContext context, final ComponentDescription description, final ComponentConfiguration configuration) throws DeploymentUnitProcessingException {
@@ -122,13 +124,13 @@ public class SingletonComponentDescription extends SessionBeanComponentDescripti
                             contextID = deploymentUnit.getParent().getName() + "!" + contextID;
                         }
                         EJBComponentDescription ejbComponentDescription = (EJBComponentDescription) description;
-                        final boolean securityRequired = isExplicitSecurityDomainConfigured();
-                        ejbComponentDescription.setSecurityRequired(securityRequired);
-                        if (isSecurityDomainKnown()) {
-                            final HashMap<Integer, InterceptorFactory> elytronInterceptorFactories = getElytronInterceptorFactories(contextID, ejbComponentDescription.isEnableJacc(), false);
+                        if (getSecurityDomainServiceName() != null) {
+                            ejbComponentDescription.setSecurityRequired(securityRequired);
+                            final HashMap<Integer, InterceptorFactory> elytronInterceptorFactories = getElytronInterceptorFactories(contextID, ejbComponentDescription.requiresJacc(), false);
                             elytronInterceptorFactories.forEach((priority, elytronInterceptorFactory) -> configuration.addPostConstructInterceptor(elytronInterceptorFactory, priority));
-                        } else {
-                            configuration.addPostConstructInterceptor(new SecurityContextInterceptorFactory(securityRequired, false, contextID), InterceptorOrder.View.SECURITY_CONTEXT);
+                        } else if (definedSecurityDomain){
+                            ejbComponentDescription.setSecurityRequired(definedSecurityDomain);
+                            configuration.addPostConstructInterceptor(new SecurityContextInterceptorFactory(definedSecurityDomain, false, contextID), InterceptorOrder.View.SECURITY_CONTEXT);
                         }
                     }
                 });

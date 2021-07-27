@@ -40,7 +40,7 @@ import static org.jboss.as.jaxrs.logging.JaxrsLogger.JAXRS_LOGGER;
  * This class addresses the spec requirement of pre-processing resource
  * method parameters with DefaultValue annotations at application deployment
  * time.
- * (section 3.2 of the jax-rs 2.1 specification)
+ * (section 3.2 of the Jakarta RESTful Web Services 2.1 specification)
  */
 public class JaxrsMethodParameterProcessor implements DeploymentUnitProcessor {
     private final DotName PARAM_CONVERTER_PROVIDER_DOTNAME =
@@ -528,12 +528,11 @@ public class JaxrsMethodParameterProcessor implements DeploymentUnitProcessor {
                     detail.parameter.getComponentType(),
                     detail.annotations);
 
-            if (obj != null) {
-                if (obj instanceof ParamConverter) {
-                    this.pc = (ParamConverter) obj;
-                    return pc.fromString(detail.defaultValue.value());
-                }
+            if (obj instanceof ParamConverter) {
+                this.pc = (ParamConverter) obj;
+                return pc.fromString(detail.defaultValue.value());
             }
+
             return obj;
         }
 

@@ -36,14 +36,15 @@ import org.jboss.as.server.deployment.DeploymentUnitProcessor;
 import org.jboss.as.server.deployment.module.ModuleDependency;
 import org.jboss.as.server.deployment.module.ModuleSpecification;
 
-import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.JACKSON_CORE_ASL;
 import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.JACKSON_DATATYPE_JDK8;
 import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.JACKSON_DATATYPE_JSR310;
 import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.JAXB_API;
 import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.JAXRS_API;
 import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.JSON_API;
+import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.MP_REST_CLIENT;
 import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.RESTEASY_ATOM;
 import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.RESTEASY_CDI;
+import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.RESTEASY_CLIENT_MICROPROFILE;
 import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.RESTEASY_CRYPTO;
 import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.RESTEASY_JACKSON2;
 import static org.jboss.as.jaxrs.JaxrsSubsystemDefinition.RESTEASY_JAXB;
@@ -64,7 +65,7 @@ import org.jboss.modules.filter.PathFilters;
 import org.jboss.vfs.VirtualFile;
 
 /**
- * Deployment processor which adds a module dependencies for modules needed for JAX-RS deployments.
+ * Deployment processor which adds a module dependencies for modules needed for Jakarta RESTful Web Services deployments.
  *
  * @author Stuart Douglas
  */
@@ -82,12 +83,13 @@ public class JaxrsDependencyProcessor implements DeploymentUnitProcessor {
         addDependency(moduleSpecification, moduleLoader, JAXB_API, false, false);
         addDependency(moduleSpecification, moduleLoader, JSON_API, false, false);
 
-        //we need to add these from all deployments, as they could be using the JAX-RS client
+        //we need to add these from all deployments, as they could be using the Jakarta RESTful Web Services client
 
         addDependency(moduleSpecification, moduleLoader, RESTEASY_ATOM, true, false);
         addDependency(moduleSpecification, moduleLoader, RESTEASY_VALIDATOR_11, true, false);
         addDependency(moduleSpecification, moduleLoader, RESTEASY_VALIDATOR, true, false);
         addDependency(moduleSpecification, moduleLoader, RESTEASY_JAXRS, true, deploymentBundlesClientBuilder);
+        addDependency(moduleSpecification, moduleLoader, RESTEASY_CLIENT_MICROPROFILE, true, false);
         addDependency(moduleSpecification, moduleLoader, RESTEASY_JAXB, true, false);
         addDependency(moduleSpecification, moduleLoader, RESTEASY_JACKSON2, true, false);
         addDependency(moduleSpecification, moduleLoader, RESTEASY_JSON_P_PROVIDER, true, false);
@@ -96,10 +98,10 @@ public class JaxrsDependencyProcessor implements DeploymentUnitProcessor {
         addDependency(moduleSpecification, moduleLoader, RESTEASY_JSAPI, true, false);
         addDependency(moduleSpecification, moduleLoader, RESTEASY_MULTIPART, true, false);
         addDependency(moduleSpecification, moduleLoader, RESTEASY_YAML, true, false);
-        addDependency(moduleSpecification, moduleLoader, JACKSON_CORE_ASL, true, false);
         addDependency(moduleSpecification, moduleLoader, RESTEASY_CRYPTO, true, false);
         addDependency(moduleSpecification, moduleLoader, JACKSON_DATATYPE_JDK8, true, false);
         addDependency(moduleSpecification, moduleLoader, JACKSON_DATATYPE_JSR310, true, false);
+        addDependency(moduleSpecification, moduleLoader, MP_REST_CLIENT, true, false);
 
         final CapabilityServiceSupport support = deploymentUnit.getAttachment(Attachments.CAPABILITY_SERVICE_SUPPORT);
         if (support.hasCapability(WELD_CAPABILITY_NAME)) {

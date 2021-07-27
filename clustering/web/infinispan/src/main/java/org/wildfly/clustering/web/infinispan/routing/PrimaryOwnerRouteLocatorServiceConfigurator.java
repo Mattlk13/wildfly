@@ -35,8 +35,10 @@ import org.jboss.msc.service.ServiceBuilder;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceName;
 import org.jboss.msc.service.ServiceTarget;
+import org.wildfly.clustering.ee.infinispan.GroupedKey;
 import org.wildfly.clustering.infinispan.spi.InfinispanCacheRequirement;
 import org.wildfly.clustering.registry.Registry;
+import org.wildfly.clustering.service.AsyncServiceConfigurator;
 import org.wildfly.clustering.service.CompositeDependency;
 import org.wildfly.clustering.service.FunctionalService;
 import org.wildfly.clustering.service.ServiceConfigurator;
@@ -59,7 +61,7 @@ public class PrimaryOwnerRouteLocatorServiceConfigurator extends RouteLocatorSer
     private final WebDeploymentConfiguration deploymentConfiguration;
 
     private volatile SupplierDependency<Registry<String, Void>> registry;
-    private volatile SupplierDependency<Cache<String, ?>> cache;
+    private volatile SupplierDependency<Cache<GroupedKey<String>, ?>> cache;
     private volatile SupplierDependency<NodeFactory<Address>> factory;
 
     public PrimaryOwnerRouteLocatorServiceConfigurator(InfinispanSessionManagementConfiguration managementConfiguration, WebDeploymentConfiguration deploymentConfiguration) {
@@ -76,7 +78,7 @@ public class PrimaryOwnerRouteLocatorServiceConfigurator extends RouteLocatorSer
     @Override
     public ServiceBuilder<?> build(ServiceTarget target) {
         ServiceName name = this.getServiceName();
-        ServiceBuilder<?> builder = target.addService(name);
+        ServiceBuilder<?> builder = new AsyncServiceConfigurator(name).build(target);
         Consumer<RouteLocator> locator = new CompositeDependency(this.registry, this.cache, this.factory).register(builder).provides(name);
         Service service = new FunctionalService<>(locator, Function.identity(), this);
         return builder.setInstance(service).setInitialMode(ServiceController.Mode.ON_DEMAND);
@@ -96,7 +98,7 @@ public class PrimaryOwnerRouteLocatorServiceConfigurator extends RouteLocatorSer
     }
 
     @Override
-    public Cache<String, ?> getCache() {
+    public Cache<GroupedKey<String>, ?> getCache() {
         return this.cache.get();
     }
 

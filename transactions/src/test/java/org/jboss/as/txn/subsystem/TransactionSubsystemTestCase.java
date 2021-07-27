@@ -48,6 +48,8 @@ import java.util.List;
 import static org.jboss.as.txn.subsystem.TransactionTransformers.MODEL_VERSION_EAP64;
 import static org.jboss.as.txn.subsystem.TransactionTransformers.MODEL_VERSION_EAP70;
 import static org.jboss.as.txn.subsystem.TransactionTransformers.MODEL_VERSION_EAP71;
+import static org.jboss.as.txn.subsystem.TransactionTransformers.MODEL_VERSION_EAP72;
+import static org.jboss.as.txn.subsystem.TransactionTransformers.MODEL_VERSION_EAP73;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -69,20 +71,7 @@ public class TransactionSubsystemTestCase extends AbstractSubsystemBaseTest {
 
     @Override
     protected String getSubsystemXsdPath() throws Exception {
-        return "schema/wildfly-txn_5_0.xsd";
-    }
-
-    @Override
-    protected String[] getSubsystemTemplatePaths() throws IOException {
-        return new String[]{
-                "/subsystem-templates/transactions.xml"
-        };
-    }
-
-    @Test
-    @Override
-    public void testSchemaOfSubsystemTemplates() throws Exception {
-        super.testSchemaOfSubsystemTemplates();
+        return "schema/wildfly-txn_6_0.xsd";
     }
 
     @Override
@@ -109,6 +98,11 @@ public class TransactionSubsystemTestCase extends AbstractSubsystemBaseTest {
     }
 
     @Test
+    public void testCmr() throws Exception {
+        standardSubsystemTest("cmr.xml");
+    }
+
+    @Test
     public void testJdbcStoreMinimal() throws Exception {
         standardSubsystemTest("jdbc-store-minimal.xml");
     }
@@ -131,6 +125,21 @@ public class TransactionSubsystemTestCase extends AbstractSubsystemBaseTest {
     @Test
     public void testParser_EAP_7_1() throws Exception {
         standardSubsystemTest("full-4.0.0.xml");
+    }
+
+    @Test
+    public void testParser_EAP_7_2() throws Exception {
+        standardSubsystemTest("full-5.0.0.xml");
+    }
+
+    @Test
+    public void testParser_EAP_7_3() throws Exception {
+        standardSubsystemTest("full-5.1.0.xml");
+    }
+
+    @Test
+    public void testParser_EAP_7_4() throws Exception {
+        standardSubsystemTest("full.xml");
     }
 
     @Test
@@ -179,8 +188,18 @@ public class TransactionSubsystemTestCase extends AbstractSubsystemBaseTest {
         testTransformersFull(ModelTestControllerVersion.EAP_7_1_0, MODEL_VERSION_EAP71);
     }
 
+    @Test
+    public void testTransformersFullEAP720() throws Exception {
+        testTransformersFull(ModelTestControllerVersion.EAP_7_2_0, MODEL_VERSION_EAP72);
+    }
+
+    @Test
+    public void testTransformersFullEAP730() throws Exception {
+        testTransformersFull(ModelTestControllerVersion.EAP_7_3_0, MODEL_VERSION_EAP73);
+    }
+
     private void testTransformersFull(ModelTestControllerVersion controllerVersion, ModelVersion modelVersion) throws Exception {
-        String subsystemXml = readResource(String.format("full-%s.xml", modelVersion));
+        String subsystemXml = readResource("full.xml");
 
         //Use the non-runtime version of the extension which will happen on the HC
         KernelServicesBuilder builder = createKernelServicesBuilder(AdditionalInitialization.MANAGEMENT)
@@ -218,6 +237,7 @@ public class TransactionSubsystemTestCase extends AbstractSubsystemBaseTest {
                 break;
             case EAP_7_0_0:
             case EAP_7_1_0:
+            case EAP_7_2_0:
                 modelFixer = new ModelFixer() {
                     @Override
                     public ModelNode fixModel(ModelNode modelNode) {

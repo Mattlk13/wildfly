@@ -79,6 +79,7 @@ public enum EJB3SubsystemXMLElement {
 
     REMOTE("remote"),
     REMOTING_EJB_RECEIVER("remoting-ejb-receiver"),
+    REMOTE_HTTP_CONNECTION("remote-http-connection"),
     RESOURCE_ADAPTER_NAME("resource-adapter-name"),
     RESOURCE_ADAPTER_REF("resource-adapter-ref"),
 
@@ -89,7 +90,6 @@ public enum EJB3SubsystemXMLElement {
     STATISTICS("statistics"),
     STRICT_MAX_POOL("strict-max-pool"),
 
-    GLOBAL_INTERCEPTORS("global-interceptors"),
     CONNECTIONS("connections"),
 
     THREAD_POOL("thread-pool"),
@@ -105,7 +105,13 @@ public enum EJB3SubsystemXMLElement {
     IDENTITY("identity"),
 
     STATIC_EJB_DISCOVERY("static-ejb-discovery"),
+    MODULES("modules"),
     MODULE("module"),
+
+    //server interceptors
+    SERVER_INTERCEPTORS("server-interceptors"),
+    CLIENT_INTERCEPTORS("client-interceptors"),
+    INTERCEPTOR("interceptor")
     ;
 
     private final String name;

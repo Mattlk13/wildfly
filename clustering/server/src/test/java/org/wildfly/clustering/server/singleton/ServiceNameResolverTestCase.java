@@ -28,6 +28,8 @@ import org.jboss.msc.service.ServiceName;
 import org.junit.Test;
 import org.wildfly.clustering.infinispan.spi.persistence.KeyFormatTester;
 import org.wildfly.clustering.marshalling.ExternalizerTester;
+import org.wildfly.clustering.marshalling.jboss.JBossMarshallingTesterFactory;
+import org.wildfly.clustering.marshalling.protostream.ProtoStreamTesterFactory;
 import org.wildfly.clustering.server.singleton.ServiceNameResolver.ServiceNameExternalizer;
 import org.wildfly.clustering.server.singleton.ServiceNameResolver.ServiceNameKeyFormat;
 
@@ -36,12 +38,14 @@ import org.wildfly.clustering.server.singleton.ServiceNameResolver.ServiceNameKe
  * @author Paul Ferraro
  */
 public class ServiceNameResolverTestCase {
+    private final ServiceName name = ServiceName.JBOSS.append("foo", "bar");
 
     @Test
-    public void test() throws ClassNotFoundException, IOException {
-        ServiceName name = ServiceName.JBOSS.append("service");
+    public void test() throws IOException {
+        new ExternalizerTester<>(new ServiceNameExternalizer()).test(this.name);
+        new KeyFormatTester<>(new ServiceNameKeyFormat()).test(this.name);
 
-        new ExternalizerTester<>(new ServiceNameExternalizer()).test(name);
-        new KeyFormatTester<>(new ServiceNameKeyFormat()).test(name);
+        JBossMarshallingTesterFactory.INSTANCE.createTester().test(this.name);
+        ProtoStreamTesterFactory.INSTANCE.createTester().test(this.name);
     }
 }

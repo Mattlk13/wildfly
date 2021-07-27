@@ -26,7 +26,9 @@ import org.jboss.as.clustering.controller.BinaryCapabilityNameResolver;
 import org.jboss.as.clustering.controller.CapabilityReference;
 import org.jboss.as.clustering.controller.ChildResourceDefinition;
 import org.jboss.as.clustering.controller.CommonUnaryRequirement;
+import org.jboss.as.clustering.controller.FunctionExecutorRegistry;
 import org.jboss.as.clustering.controller.ManagementResourceRegistration;
+import org.jboss.as.clustering.controller.OperationHandler;
 import org.jboss.as.clustering.controller.ResourceDescriptor;
 import org.jboss.as.clustering.controller.ResourceServiceConfiguratorFactory;
 import org.jboss.as.clustering.controller.RestartParentResourceRegistration;
@@ -39,6 +41,7 @@ import org.jboss.as.controller.StringListAttributeDefinition;
 import org.jboss.as.controller.capability.RuntimeCapability;
 import org.jboss.as.controller.registry.AttributeAccess;
 import org.jboss.as.controller.transform.description.ResourceTransformationDescriptionBuilder;
+import org.wildfly.clustering.infinispan.client.RemoteCacheContainer;
 import org.wildfly.clustering.service.BinaryRequirement;
 
 /**
@@ -97,7 +100,6 @@ public class RemoteClusterResourceDefinition extends ChildResourceDefinition<Man
         }
     }
 
-
     enum Capability implements org.jboss.as.clustering.controller.Capability {
         REMOTE_CLUSTER("org.wildfly.clustering.infinispan.remote-cache-container.remote-cluster"),
         ;
@@ -113,11 +115,19 @@ public class RemoteClusterResourceDefinition extends ChildResourceDefinition<Man
         }
     }
 
-    private final ResourceServiceConfiguratorFactory serviceConfiguratorFactory;
+    static void buildTransformation(ModelVersion version, ResourceTransformationDescriptionBuilder parent) {
+        ResourceTransformationDescriptionBuilder builder = parent.addChildResource(WILDCARD_PATH);
 
-    RemoteClusterResourceDefinition(ResourceServiceConfiguratorFactory serviceConfiguratorFactory) {
+        RemoteClusterOperation.buildTransformation(version, builder);
+    }
+
+    private final ResourceServiceConfiguratorFactory serviceConfiguratorFactory;
+    private final FunctionExecutorRegistry<RemoteCacheContainer> executors;
+
+    RemoteClusterResourceDefinition(ResourceServiceConfiguratorFactory serviceConfiguratorFactory, FunctionExecutorRegistry<RemoteCacheContainer> executors) {
         super(WILDCARD_PATH, InfinispanExtension.SUBSYSTEM_RESOLVER.createChildResolver(WILDCARD_PATH));
         this.serviceConfiguratorFactory = serviceConfiguratorFactory;
+        this.executors = executors;
     }
 
     @Override
@@ -129,10 +139,10 @@ public class RemoteClusterResourceDefinition extends ChildResourceDefinition<Man
                 .addCapabilities(Capability.class);
         new RestartParentResourceRegistration(this.serviceConfiguratorFactory, descriptor).register(registration);
 
-        return registration;
-    }
+        if (registration.isRuntimeOnlyRegistrationValid()) {
+            new OperationHandler<>(new RemoteClusterOperationExecutor(this.executors), RemoteClusterOperation.class).register(registration);
+        }
 
-    static void buildTransformation(ModelVersion version, ResourceTransformationDescriptionBuilder parent) {
-        // Nothing to transform yet
+        return registration;
     }
 }

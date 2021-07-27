@@ -25,47 +25,48 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
-
-import javax.servlet.ServletContext;
+import java.util.function.Consumer;
 
 import org.wildfly.clustering.Registrar;
 import org.wildfly.clustering.Registration;
 import org.wildfly.clustering.ee.Batcher;
 import org.wildfly.clustering.ee.cache.tx.TransactionBatch;
 import org.wildfly.clustering.web.IdentifierFactory;
-import org.wildfly.clustering.web.cache.session.ImmutableSessionActivationNotifier;
 import org.wildfly.clustering.web.cache.session.SessionFactory;
 import org.wildfly.clustering.web.cache.session.SimpleImmutableSession;
-import org.wildfly.clustering.web.hotrod.Logger;
+import org.wildfly.clustering.web.cache.session.ValidSession;
+import org.wildfly.clustering.web.hotrod.logging.Logger;
 import org.wildfly.clustering.web.session.ImmutableSession;
 import org.wildfly.clustering.web.session.Session;
-import org.wildfly.clustering.web.session.SessionAttributes;
 import org.wildfly.clustering.web.session.SessionExpirationListener;
 import org.wildfly.clustering.web.session.SessionManager;
-import org.wildfly.clustering.web.session.SessionMetaData;
+import org.wildfly.common.function.Functions;
 
 /**
  * Generic HotRod-based session manager implementation - independent of cache mapping strategy.
+ * @param <SC> the ServletContext specification type
+ * @param <MV> the meta-data value type
+ * @param <AV> the attributes value type
+ * @param <LC> the local context type
  * @author Paul Ferraro
  */
-public class HotRodSessionManager<MV, AV, L> implements SessionManager<L, TransactionBatch> {
+public class HotRodSessionManager<SC, MV, AV, LC> implements SessionManager<LC, TransactionBatch> {
     private final Registrar<SessionExpirationListener> expirationRegistrar;
     private final SessionExpirationListener expirationListener;
-    private final Scheduler expirationScheduler;
-    private final SessionFactory<MV, AV, L> factory;
+    private final SessionFactory<SC, MV, AV, LC> factory;
     private final IdentifierFactory<String> identifierFactory;
-    private final ServletContext context;
+    private final SC context;
     private final Batcher<TransactionBatch> batcher;
     private final Duration stopTimeout;
+    private final Consumer<ImmutableSession> closeTask = Functions.discardingConsumer();
 
     private volatile Duration defaultMaxInactiveInterval = Duration.ofMinutes(30L);
     private volatile Registration expirationRegistration;
 
-    public HotRodSessionManager(SessionFactory<MV, AV, L> factory, HotRodSessionManagerConfiguration configuration) {
+    public HotRodSessionManager(SessionFactory<SC, MV, AV, LC> factory, HotRodSessionManagerConfiguration<SC> configuration) {
         this.factory = factory;
         this.expirationRegistrar = configuration.getExpirationRegistrar();
         this.expirationListener = configuration.getExpirationListener();
-        this.expirationScheduler = configuration.getExpirationScheduler();
         this.context = configuration.getServletContext();
         this.identifierFactory = configuration.getIdentifierFactory();
         this.batcher = configuration.getBatcher();
@@ -108,7 +109,7 @@ public class HotRodSessionManager<MV, AV, L> implements SessionManager<L, Transa
     }
 
     @Override
-    public Session<L> findSession(String id) {
+    public Session<LC> findSession(String id) {
         Map.Entry<MV, AV> entry = this.factory.findValue(id);
         if (entry == null) {
             Logger.ROOT_LOGGER.tracef("Session %s not found", id);
@@ -121,22 +122,20 @@ public class HotRodSessionManager<MV, AV, L> implements SessionManager<L, Transa
             this.factory.remove(id);
             return null;
         }
-        this.expirationScheduler.cancel(id);
-        this.triggerPostActivationEvents(session);
-        return new SchedulableSession(this.factory.createSession(id, entry), session);
+        return new ValidSession<>(this.factory.createSession(id, entry, this.context), this.closeTask);
     }
 
     @Override
-    public Session<L> createSession(String id) {
+    public Session<LC> createSession(String id) {
         Map.Entry<MV, AV> entry = this.factory.createValue(id, null);
         if (entry == null) return null;
-        Session<L> session = this.factory.createSession(id, entry);
+        Session<LC> session = this.factory.createSession(id, entry, this.context);
         session.getMetaData().setMaxInactiveInterval(this.defaultMaxInactiveInterval);
-        return new SchedulableSession(session, session);
+        return new ValidSession<>(session, this.closeTask);
     }
 
     @Override
-    public ImmutableSession viewSession(String id) {
+    public ImmutableSession readSession(String id) {
         Map.Entry<MV, AV> entry = this.factory.findValue(id);
         return (entry != null) ? new SimpleImmutableSession(this.factory.createImmutableSession(id, entry)) : null;
     }
@@ -154,79 +153,5 @@ public class HotRodSessionManager<MV, AV, L> implements SessionManager<L, Transa
     @Override
     public long getActiveSessionCount() {
         return this.getActiveSessions().size();
-    }
-
-    void triggerPrePassivationEvents(ImmutableSession session) {
-        new ImmutableSessionActivationNotifier(session, this.context).prePassivate();
-    }
-
-    void triggerPostActivationEvents(ImmutableSession session) {
-        new ImmutableSessionActivationNotifier(session, this.context).postActivate();
-    }
-
-    void schedule(ImmutableSession session) {
-        this.expirationScheduler.schedule(session.getId(), session.getMetaData());
-    }
-
-    // Session decorator that performs scheduling on close().
-    private class SchedulableSession implements Session<L> {
-        private final Session<L> session;
-        private final ImmutableSession immutableSession;
-
-        SchedulableSession(Session<L> session, ImmutableSession immutableSession) {
-            this.session = session;
-            this.immutableSession = immutableSession;
-        }
-
-        @Override
-        public String getId() {
-            return this.session.getId();
-        }
-
-        @Override
-        public SessionMetaData getMetaData() {
-            if (!this.session.isValid()) {
-                throw Logger.ROOT_LOGGER.invalidSession(this.getId());
-            }
-            return this.session.getMetaData();
-        }
-
-        @Override
-        public boolean isValid() {
-            return this.session.isValid();
-        }
-
-        @Override
-        public void invalidate() {
-            if (!this.session.isValid()) {
-                throw Logger.ROOT_LOGGER.invalidSession(this.getId());
-            }
-            this.session.invalidate();
-        }
-
-        @Override
-        public SessionAttributes getAttributes() {
-            if (!this.session.isValid()) {
-                throw Logger.ROOT_LOGGER.invalidSession(this.getId());
-            }
-            return this.session.getAttributes();
-        }
-
-        @Override
-        public void close() {
-            boolean valid = this.session.isValid();
-            if (valid) {
-                HotRodSessionManager.this.triggerPrePassivationEvents(this.immutableSession);
-            }
-            this.session.close();
-            if (valid) {
-                HotRodSessionManager.this.schedule(this.immutableSession);
-            }
-        }
-
-        @Override
-        public L getLocalContext() {
-            return this.session.getLocalContext();
-        }
     }
 }

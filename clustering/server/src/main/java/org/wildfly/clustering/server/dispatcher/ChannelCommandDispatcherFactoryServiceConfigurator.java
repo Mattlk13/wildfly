@@ -21,16 +21,24 @@
  */
 package org.wildfly.clustering.server.dispatcher;
 
+import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.AbstractMap;
+import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+import org.jboss.as.clustering.context.Contextualizer;
+import org.jboss.as.clustering.context.DefaultContextualizer;
 import org.jboss.as.clustering.controller.CapabilityServiceConfigurator;
 import org.jboss.as.clustering.function.Consumers;
 import org.jboss.as.clustering.function.Functions;
 import org.jboss.as.controller.capability.CapabilityServiceSupport;
 import org.jboss.as.server.Services;
+import org.jboss.marshalling.ClassResolver;
 import org.jboss.marshalling.MarshallingConfiguration;
 import org.jboss.marshalling.ModularClassResolver;
 import org.jboss.modules.Module;
@@ -46,9 +54,12 @@ import org.wildfly.clustering.jgroups.spi.ChannelFactory;
 import org.wildfly.clustering.jgroups.spi.JGroupsRequirement;
 import org.wildfly.clustering.marshalling.jboss.DynamicClassTable;
 import org.wildfly.clustering.marshalling.jboss.ExternalizerObjectTable;
-import org.wildfly.clustering.marshalling.jboss.MarshallingContext;
+import org.wildfly.clustering.marshalling.jboss.JBossByteBufferMarshaller;
 import org.wildfly.clustering.marshalling.jboss.SimpleMarshallingConfigurationRepository;
-import org.wildfly.clustering.marshalling.jboss.SimpleMarshallingContextFactory;
+import org.wildfly.clustering.marshalling.protostream.ModuleClassLoaderMarshaller;
+import org.wildfly.clustering.marshalling.protostream.ProtoStreamByteBufferMarshaller;
+import org.wildfly.clustering.marshalling.protostream.SerializationContextBuilder;
+import org.wildfly.clustering.marshalling.spi.ByteBufferMarshaller;
 import org.wildfly.clustering.service.AsyncServiceConfigurator;
 import org.wildfly.clustering.service.CompositeDependency;
 import org.wildfly.clustering.service.FunctionalService;
@@ -56,38 +67,34 @@ import org.wildfly.clustering.service.ServiceConfigurator;
 import org.wildfly.clustering.service.ServiceSupplierDependency;
 import org.wildfly.clustering.service.SimpleServiceNameProvider;
 import org.wildfly.clustering.service.SupplierDependency;
+import org.wildfly.security.manager.WildFlySecurityManager;
 
 /**
  * Builds a channel-based {@link org.wildfly.clustering.dispatcher.CommandDispatcherFactory} service.
  * @author Paul Ferraro
  */
-public class ChannelCommandDispatcherFactoryServiceConfigurator extends SimpleServiceNameProvider implements CapabilityServiceConfigurator, ChannelCommandDispatcherFactoryConfiguration, MarshallingConfigurationContext, Supplier<AutoCloseableCommandDispatcherFactory> {
+public class ChannelCommandDispatcherFactoryServiceConfigurator extends SimpleServiceNameProvider implements CapabilityServiceConfigurator, ChannelCommandDispatcherFactoryConfiguration, Supplier<AutoCloseableCommandDispatcherFactory>, Function<ClassLoader, ByteBufferMarshaller>, Predicate<ByteBuffer> {
 
-    enum MarshallingVersion implements Function<MarshallingConfigurationContext, MarshallingConfiguration> {
+    enum MarshallingVersion implements Function<Map.Entry<ClassResolver, ClassLoader>, MarshallingConfiguration> {
         VERSION_1() {
             @Override
-            public MarshallingConfiguration apply(MarshallingConfigurationContext context) {
+            public MarshallingConfiguration apply(Map.Entry<ClassResolver, ClassLoader> entry) {
                 MarshallingConfiguration config = new MarshallingConfiguration();
-                config.setClassResolver(ModularClassResolver.getInstance(context.getModuleLoader()));
-                config.setClassTable(new DynamicClassTable(context.getModule().getClassLoader()));
-                return config;
-            }
-        },
-        VERSION_2() {
-            @Override
-            public MarshallingConfiguration apply(MarshallingConfigurationContext context) {
-                MarshallingConfiguration config = new MarshallingConfiguration();
-                config.setClassResolver(ModularClassResolver.getInstance(context.getModuleLoader()));
-                config.setClassTable(new DynamicClassTable(context.getModule().getClassLoader()));
-                config.setObjectTable(new ExternalizerObjectTable(context.getModule().getClassLoader()));
+                ClassLoader userLoader = entry.getValue();
+                ClassLoader loader = WildFlySecurityManager.getClassLoaderPrivileged(ChannelCommandDispatcherFactory.class);
+                ClassLoader[] loaders = userLoader.equals(loader) ? new ClassLoader[] { userLoader } : new ClassLoader[] { userLoader, loader };
+                config.setClassResolver(entry.getKey());
+                config.setClassTable(new DynamicClassTable(loaders));
+                config.setObjectTable(new ExternalizerObjectTable(loaders));
                 return config;
             }
         },
         ;
-        static final MarshallingVersion CURRENT = VERSION_2;
+        static final MarshallingVersion CURRENT = VERSION_1;
     }
 
     private final String group;
+    private final Function<ClassLoader, Contextualizer> contextualizerFactory = DefaultContextualizer::new;
 
     private volatile SupplierDependency<ChannelFactory> channelFactory;
     private volatile SupplierDependency<JChannel> channel;
@@ -128,13 +135,23 @@ public class ChannelCommandDispatcherFactoryServiceConfigurator extends SimpleSe
     }
 
     @Override
-    public Module getModule() {
-        return this.module.get();
+    public Function<ClassLoader, ByteBufferMarshaller> getMarshallerFactory() {
+        return this;
     }
 
     @Override
-    public ModuleLoader getModuleLoader() {
-        return this.loader.get();
+    public Function<ClassLoader, Contextualizer> getContextualizerFactory() {
+        return this.contextualizerFactory;
+    }
+
+    @Override
+    public ByteBufferMarshaller apply(ClassLoader loader) {
+        ModuleLoader moduleLoader = this.loader.get();
+        try {
+            return new ProtoStreamByteBufferMarshaller(new SerializationContextBuilder(new ModuleClassLoaderMarshaller(moduleLoader)).require(loader).build());
+        } catch (NoSuchElementException e) {
+            return new JBossByteBufferMarshaller(new SimpleMarshallingConfigurationRepository(MarshallingVersion.class, MarshallingVersion.CURRENT, new AbstractMap.SimpleImmutableEntry<>(ModularClassResolver.getInstance(moduleLoader), loader)), loader);
+        }
     }
 
     @Override
@@ -143,8 +160,8 @@ public class ChannelCommandDispatcherFactoryServiceConfigurator extends SimpleSe
     }
 
     @Override
-    public MarshallingContext getMarshallingContext() {
-        return new SimpleMarshallingContextFactory().createMarshallingContext(new SimpleMarshallingConfigurationRepository(MarshallingVersion.class, MarshallingVersion.CURRENT, this), this.getModule().getClassLoader());
+    public ByteBufferMarshaller getMarshaller() {
+        return new ProtoStreamByteBufferMarshaller(new SerializationContextBuilder(new ModuleClassLoaderMarshaller(this.loader.get())).load(this.module.get().getClassLoader()).build());
     }
 
     @Override
@@ -153,7 +170,12 @@ public class ChannelCommandDispatcherFactoryServiceConfigurator extends SimpleSe
     }
 
     @Override
-    public ChannelFactory getChannelFactory() {
-        return this.channelFactory.get();
+    public Predicate<ByteBuffer> getUnknownForkPredicate() {
+        return this;
+    }
+
+    @Override
+    public boolean test(ByteBuffer buffer) {
+        return this.channelFactory.get().isUnknownForkResponse(buffer);
     }
 }

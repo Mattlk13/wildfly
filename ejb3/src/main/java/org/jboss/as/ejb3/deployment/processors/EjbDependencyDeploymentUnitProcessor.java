@@ -39,7 +39,7 @@ import org.jboss.modules.ModuleLoader;
 import org.wildfly.iiop.openjdk.deployment.IIOPDeploymentMarker;
 
 /**
- * Responsible for adding appropriate Java EE {@link org.jboss.as.server.deployment.module.ModuleDependency module dependencies}
+ * Responsible for adding appropriate Jakarta EE {@link org.jboss.as.server.deployment.module.ModuleDependency module dependencies}
  * <p/>
  * Author : Jaikiran Pai
  */
@@ -62,7 +62,7 @@ public class EjbDependencyDeploymentUnitProcessor implements DeploymentUnitProce
 
 
     /**
-     * Adds Java EE module as a dependency to any deployment unit which is an EJB deployment
+     * Adds Jakarta EE module as a dependency to any deployment unit which is an Jakarta Enterprise Beans deployment
      *
      * @param phaseContext the deployment unit context
      * @throws DeploymentUnitProcessingException
@@ -80,9 +80,9 @@ public class EjbDependencyDeploymentUnitProcessor implements DeploymentUnitProce
 
         //always add EE API
         moduleSpecification.addSystemDependency(new ModuleDependency(moduleLoader, EJB_API, false, false, true, false));
-        // previously exported by EJB_API prior to WFLY-5922 TODO WFLY-5967 look into moving this to WS subsystem
-        moduleSpecification.addSystemDependency(new ModuleDependency(moduleLoader, JAX_RPC_API, false, false, true, false));
-        //we always give them the EJB client
+        // previously exported by Jakarta Enterprise Beans_API prior to WFLY-5922 TODO WFLY-5967 look into moving this to WS subsystem
+        moduleSpecification.addSystemDependency(new ModuleDependency(moduleLoader, JAX_RPC_API, true, false, true, false));
+        //we always give them the Jakarta Enterprise Beans client
         moduleSpecification.addSystemDependency(new ModuleDependency(moduleLoader, EJB_CLIENT, false, false, true, false));
         moduleSpecification.addSystemDependency(new ModuleDependency(moduleLoader, EJB_NAMING_CLIENT, false, false, true, false));
         moduleSpecification.addSystemDependency(new ModuleDependency(moduleLoader, EJB_IIOP_CLIENT, false, false, false, false));
@@ -99,7 +99,7 @@ public class EjbDependencyDeploymentUnitProcessor implements DeploymentUnitProce
         }
 
         // fetch the EjbJarMetaData
-        //TODO: remove the app client bit after the next EJB release
+        //TODO: remove the app client bit after the next Jakarta Enterprise Beans release
         if (!isEjbDeployment(deploymentUnit) && !DeploymentTypeMarker.isType(DeploymentType.APPLICATION_CLIENT, deploymentUnit)) {
             // nothing to do
             return;

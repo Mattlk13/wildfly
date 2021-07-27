@@ -111,7 +111,7 @@ public class NotClosingInjectedContextTestCase {
                         new PropertyPermission("ts.timeout.factor", "read")), "jboss-permissions.xml")
                 .addAsManifestResource(EmptyAsset.INSTANCE, "beans.xml")
                 .addClass(TimeoutUtil.class)
-                .addAsManifestResource(new StringAsset("Dependencies: org.jboss.as.controller,org.jboss.remoting3\n"), "MANIFEST.MF");
+                .addAsManifestResource(new StringAsset("Dependencies: org.jboss.as.controller,org.jboss.remoting\n"), "MANIFEST.MF");
         return archive;
     }
 
@@ -223,7 +223,7 @@ public class NotClosingInjectedContextTestCase {
             operation.get("value").set("true");
             client.getControllerClient().execute(operation);
 
-            ServerReload.executeReloadAndWaitForCompletion(client.getControllerClient(), TimeoutUtil.adjust(50000));
+            ServerReload.executeReloadAndWaitForCompletion(client, TimeoutUtil.adjust(50000));
         }
     }
 }

@@ -10,7 +10,7 @@
         Maintain separation between the artifact id and the version to help prevent
         merge conflicts between commits changing the GA and those changing the V.
         -->
-        <version>18.0.0.Beta1-SNAPSHOT</version>
+        <version>25.0.0.Beta1-SNAPSHOT</version>
     </parent>
 
     <!-- ********************************************************************************** -->
@@ -35,8 +35,8 @@
         </dependency>
         <!-- Required for Java 11 -->
         <dependency>
-            <groupId>javax.activation</groupId>
-            <artifactId>activation</artifactId>
+            <groupId>com.sun.activation</groupId>
+            <artifactId>jakarta.activation</artifactId>
             <scope>test</scope>
         </dependency>
         <!-- Required for Java 11 -->
@@ -90,8 +90,8 @@
         </dependency>
         <!-- ExampleDS used in tests -->
         <dependency>
-            <groupId>javax.persistence</groupId>
-            <artifactId>javax.persistence-api</artifactId>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -214,6 +214,7 @@
                             <!-- Tests to execute. -->
                             <includes>
                                 <include>org/jboss/as/test/xts/**/*TestCase.java</include>
+                                <include>org/jboss/as/test/txbridge/**/*TestCase.java</include>
                             </includes>
                             <systemPropertyVariables combine.children="append">
                                 <arquillian.launch>xts-servers</arquillian.launch>

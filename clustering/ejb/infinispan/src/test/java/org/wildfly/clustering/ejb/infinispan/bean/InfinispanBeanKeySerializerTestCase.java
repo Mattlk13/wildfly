@@ -28,10 +28,9 @@ import java.util.UUID;
 import org.jboss.ejb.client.SessionID;
 import org.jboss.ejb.client.UUIDSessionID;
 import org.junit.Test;
-import org.wildfly.clustering.ejb.infinispan.bean.InfinispanBeanKeySerializer.InfinispanBeanKeyExternalizer;
 import org.wildfly.clustering.ejb.infinispan.bean.InfinispanBeanKeySerializer.InfinispanBeanKeyFormat;
 import org.wildfly.clustering.infinispan.spi.persistence.KeyFormatTester;
-import org.wildfly.clustering.marshalling.ExternalizerTester;
+import org.wildfly.clustering.marshalling.protostream.ProtoStreamTesterFactory;
 
 /**
  * Unit test for {@link InfinispanBeanKeySerializer}.
@@ -40,10 +39,10 @@ import org.wildfly.clustering.marshalling.ExternalizerTester;
 public class InfinispanBeanKeySerializerTestCase {
 
     @Test
-    public void test() throws ClassNotFoundException, IOException {
+    public void test() throws IOException {
         InfinispanBeanKey<SessionID> key = new InfinispanBeanKey<>(new UUIDSessionID(UUID.randomUUID()));
 
-        new ExternalizerTester<>(new InfinispanBeanKeyExternalizer()).test(key);
+        ProtoStreamTesterFactory.INSTANCE.createTester().test(key);
         new KeyFormatTester<>(new InfinispanBeanKeyFormat()).test(key);
     }
 }

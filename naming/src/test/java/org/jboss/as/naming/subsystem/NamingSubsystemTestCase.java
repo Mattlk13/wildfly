@@ -60,22 +60,9 @@ public class NamingSubsystemTestCase extends AbstractSubsystemBaseTest {
         return "schema/jboss-as-naming_2_0.xsd";
     }
 
-    @Override
-    protected String[] getSubsystemTemplatePaths() throws IOException {
-        return new String[]{
-                "/subsystem-templates/naming.xml"
-        };
-    }
-
-    @Test
-    @Override
-    public void testSchemaOfSubsystemTemplates() throws Exception {
-        super.testSchemaOfSubsystemTemplates();
-    }
-
     @Test
     public void testOnlyExternalContextAllowsCache() throws Exception {
-        KernelServices services = createKernelServicesBuilder(AdditionalInitialization.MANAGEMENT)
+        KernelServices services = createKernelServicesBuilder(createAdditionalInitialization())
                 .build();
         Assert.assertTrue(services.isSuccessfulBoot());
 
@@ -189,4 +176,8 @@ public class NamingSubsystemTestCase extends AbstractSubsystemBaseTest {
         return result;
     }
 
+    @Override
+    protected AdditionalInitialization createAdditionalInitialization() {
+        return AdditionalInitialization.withCapabilities("org.wildfly.remoting.endpoint");
+    }
 }

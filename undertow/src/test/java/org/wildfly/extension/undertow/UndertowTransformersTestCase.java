@@ -22,12 +22,6 @@
 
 package org.wildfly.extension.undertow;
 
-import static org.junit.Assert.assertTrue;
-import static org.wildfly.extension.undertow.HttpsListenerResourceDefinition.SSL_CONTEXT;
-import static org.wildfly.extension.undertow.ListenerResourceDefinition.ALLOW_UNESCAPED_CHARACTERS_IN_URL;
-import static org.wildfly.extension.undertow.ListenerResourceDefinition.RFC6265_COOKIE_VALIDATION;
-import static org.wildfly.extension.undertow.filters.ModClusterDefinition.MAX_AJP_PACKET_SIZE;
-
 import java.util.List;
 
 import org.jboss.as.controller.ModelVersion;
@@ -43,20 +37,28 @@ import org.jboss.as.subsystem.test.KernelServices;
 import org.jboss.as.subsystem.test.KernelServicesBuilder;
 import org.jboss.as.subsystem.test.LegacyKernelServicesInitializer;
 import org.jboss.dmr.ModelNode;
+
 import org.junit.Assert;
 import org.junit.Test;
 import org.wildfly.extension.undertow.filters.ModClusterDefinition;
 import org.wildfly.extension.undertow.handlers.ReverseProxyHandler;
 
+import static org.wildfly.extension.undertow.HttpsListenerResourceDefinition.SSL_CONTEXT;
+import static org.wildfly.extension.undertow.ListenerResourceDefinition.ALLOW_UNESCAPED_CHARACTERS_IN_URL;
+import static org.wildfly.extension.undertow.ListenerResourceDefinition.RFC6265_COOKIE_VALIDATION;
+import static org.wildfly.extension.undertow.filters.ModClusterDefinition.MAX_AJP_PACKET_SIZE;
+
 /**
  * This is the barebone test example that tests subsystem
  *
  * @author <a href="mailto:tomaz.cerar@redhat.com">Tomaz Cerar</a>
+ * @author Flavia Rainone
  */
 public class UndertowTransformersTestCase extends AbstractSubsystemTest {
     private static final ModelVersion EAP7_0_0 = ModelVersion.create(3, 1, 0);
     private static final ModelVersion EAP7_1_0 = ModelVersion.create(4, 0, 0);
     private static final ModelVersion EAP7_2_0 = ModelVersion.create(7, 0, 0);
+    private static final ModelVersion EAP7_3_0 = ModelVersion.create(8, 0, 0);
 
     public UndertowTransformersTestCase() {
         super(UndertowExtension.SUBSYSTEM_NAME, new UndertowExtension());
@@ -74,7 +76,12 @@ public class UndertowTransformersTestCase extends AbstractSubsystemTest {
 
     @Test
     public void testTransformersEAP_7_2_0() throws Exception {
-        testTransformers(ModelTestControllerVersion.EAP_7_2_0, "7.2", EAP7_2_0);
+        testTransformers(ModelTestControllerVersion.EAP_7_2_0, EAP7_2_0);
+    }
+
+    @Test
+    public void testTransformersEAP_7_3_0() throws Exception {
+        testTransformers(ModelTestControllerVersion.EAP_7_3_0, EAP7_3_0);
     }
 
     @Test
@@ -131,11 +138,15 @@ public class UndertowTransformersTestCase extends AbstractSubsystemTest {
                                 ServletContainerDefinition.FILE_CACHE_METADATA_SIZE,
                                 ServletContainerDefinition.FILE_CACHE_TIME_TO_LIVE,
                                 ServletContainerDefinition.DISABLE_FILE_WATCH_SERVICE,
-                                ServletContainerDefinition.DISABLE_SESSION_ID_REUSE))
+                                ServletContainerDefinition.DISABLE_SESSION_ID_REUSE,
+                                ServletContainerDefinition.PRESERVE_PATH_ON_FORWARD
+                                ))
                 .addFailedAttribute(ajpAddress,
                         new FailedOperationTransformationConfig.NewAttributesConfig(
                                 ALLOW_UNESCAPED_CHARACTERS_IN_URL, RFC6265_COOKIE_VALIDATION))
-                .addFailedAttribute(hostAddress.append(PathElement.pathElement(Constants.SETTING, "console-access-log")), FailedOperationTransformationConfig.REJECTED_RESOURCE)
+                .addFailedAttribute(hostAddress.append(PathElement.pathElement(Constants.SETTING, Constants.CONSOLE_ACCESS_LOG)), FailedOperationTransformationConfig.REJECTED_RESOURCE)
+                .addFailedAttribute(subsystemAddress,
+                        new FailedOperationTransformationConfig.NewAttributesConfig(UndertowRootDefinition.OBFUSCATE_SESSION_ROUTE))
         );
     }
 
@@ -169,11 +180,18 @@ public class UndertowTransformersTestCase extends AbstractSubsystemTest {
                                 ServletContainerDefinition.DEFAULT_COOKIE_VERSION,
                                 ServletContainerDefinition.FILE_CACHE_MAX_FILE_SIZE,
                                 ServletContainerDefinition.FILE_CACHE_METADATA_SIZE,
-                                ServletContainerDefinition.FILE_CACHE_TIME_TO_LIVE))
+                                ServletContainerDefinition.FILE_CACHE_TIME_TO_LIVE,
+                                ServletContainerDefinition.PRESERVE_PATH_ON_FORWARD
+                        )
+                )
                 .addFailedAttribute(ajpAddress,
                         new FailedOperationTransformationConfig.NewAttributesConfig(
                                 ALLOW_UNESCAPED_CHARACTERS_IN_URL))
-                .addFailedAttribute(hostAddress.append(PathElement.pathElement(Constants.SETTING, "console-access-log")), FailedOperationTransformationConfig.REJECTED_RESOURCE)
+                .addFailedAttribute(hostAddress.append(PathElement.pathElement(Constants.SETTING, Constants.CONSOLE_ACCESS_LOG)), FailedOperationTransformationConfig.REJECTED_RESOURCE)
+                .addFailedAttribute(subsystemAddress.append(UndertowExtension.PATH_APPLICATION_SECURITY_DOMAIN).append(UndertowExtension.PATH_SSO),
+                        FailedOperationTransformationConfig.REJECTED_RESOURCE)
+                .addFailedAttribute(subsystemAddress,
+                        new FailedOperationTransformationConfig.NewAttributesConfig(UndertowRootDefinition.OBFUSCATE_SESSION_ROUTE))
         );
     }
 
@@ -182,8 +200,35 @@ public class UndertowTransformersTestCase extends AbstractSubsystemTest {
         final PathAddress subsystemAddress = PathAddress.pathAddress(UndertowExtension.SUBSYSTEM_PATH);
         final PathAddress serverAddress = subsystemAddress.append(UndertowExtension.SERVER_PATH);
         final PathAddress hostAddress = serverAddress.append(UndertowExtension.HOST_PATH);
+
+
+        PathAddress servletContainer = subsystemAddress.append(UndertowExtension.PATH_SERVLET_CONTAINER);
+
         doRejectTest(ModelTestControllerVersion.EAP_7_2_0, EAP7_2_0, new FailedOperationTransformationConfig()
+                .addFailedAttribute(hostAddress.append(PathElement.pathElement(Constants.SETTING, Constants.CONSOLE_ACCESS_LOG)), FailedOperationTransformationConfig.REJECTED_RESOURCE)
+                .addFailedAttribute(servletContainer,
+                         new FailedOperationTransformationConfig.NewAttributesConfig(
+                                 ServletContainerDefinition.PRESERVE_PATH_ON_FORWARD
+                         ))
+                .addFailedAttribute(subsystemAddress.append(UndertowExtension.PATH_APPLICATION_SECURITY_DOMAIN).append(UndertowExtension.PATH_SSO),
+                        FailedOperationTransformationConfig.REJECTED_RESOURCE)
+                .addFailedAttribute(subsystemAddress,
+                        new FailedOperationTransformationConfig.NewAttributesConfig(UndertowRootDefinition.OBFUSCATE_SESSION_ROUTE))
+        );
+    }
+
+    @Test
+    public void testRejectTransformersEAP_7_3_0() throws Exception {
+        final PathAddress subsystemAddress = PathAddress.pathAddress(UndertowExtension.SUBSYSTEM_PATH);
+        final PathAddress serverAddress = subsystemAddress.append(UndertowExtension.SERVER_PATH);
+        final PathAddress hostAddress = serverAddress.append(UndertowExtension.HOST_PATH);
+
+        doRejectTest(ModelTestControllerVersion.EAP_7_3_0, EAP7_3_0, new FailedOperationTransformationConfig()
                 .addFailedAttribute(hostAddress.append(PathElement.pathElement(Constants.SETTING, "console-access-log")), FailedOperationTransformationConfig.REJECTED_RESOURCE)
+                .addFailedAttribute(subsystemAddress.append(UndertowExtension.PATH_APPLICATION_SECURITY_DOMAIN).append(UndertowExtension.PATH_SSO),
+                        FailedOperationTransformationConfig.REJECTED_RESOURCE)
+                .addFailedAttribute(subsystemAddress,
+                        new FailedOperationTransformationConfig.NewAttributesConfig(UndertowRootDefinition.OBFUSCATE_SESSION_ROUTE))
         );
     }
 
@@ -198,7 +243,6 @@ public class UndertowTransformersTestCase extends AbstractSubsystemTest {
         KernelServicesBuilder builder = createKernelServicesBuilder(createAdditionalInitialization());
         LegacyKernelServicesInitializer init = builder.createLegacyKernelServicesBuilder(createAdditionalInitialization(), controllerVersion, targetVersion)
                 .configureReverseControllerCheck(createAdditionalInitialization(), null)
-                //.skipReverseControllerCheck()
                 .addSingleChildFirstClass(DefaultInitialization.class)
                 .addMavenResourceURL(String.format("%s:wildfly-undertow:%s", controllerVersion.getMavenGroupId(), controllerVersion.getMavenGavVersion()))
                 .dontPersistXml();
@@ -220,7 +264,6 @@ public class UndertowTransformersTestCase extends AbstractSubsystemTest {
         KernelServicesBuilder builder = createKernelServicesBuilder(createAdditionalInitialization());
         builder.createLegacyKernelServicesBuilder(createAdditionalInitialization(), controllerVersion, targetVersion)
                 .configureReverseControllerCheck(createAdditionalInitialization(), null)
-                //.skipReverseControllerCheck()
                 .addSingleChildFirstClass(DefaultInitialization.class)
                 .addMavenResourceURL(UndertowDependencies.getUndertowDependencies(controllerVersion))
                 .addMavenResourceURL(String.format("%s:wildfly-undertow:%s", controllerVersion.getMavenGroupId(), controllerVersion.getMavenGavVersion()))
@@ -239,30 +282,19 @@ public class UndertowTransformersTestCase extends AbstractSubsystemTest {
                 ModelNode transformed = transformedOperation.getTransformedOperation().get(Constants.MAX_POST_SIZE);
                 Assert.assertEquals(Constants.MAX_POST_SIZE + " should be transformed for value 0.", Long.MAX_VALUE, transformed.asLong());
             }
+            PathAddress address = PathAddress.pathAddress(op.get("address"));
+            if (address.getLastElement().getKey().equals(Constants.REVERSE_PROXY) && !op.get(Constants.CONNECTION_IDLE_TIMEOUT).isDefined()) {
+                TransformedOperation transformedOperation = mainServices.transformOperation(targetVersion, op.clone());
+                ModelNode transformed = transformedOperation.getTransformedOperation().get(Constants.CONNECTION_IDLE_TIMEOUT);
+                Assert.assertEquals(Constants.CONNECTION_IDLE_TIMEOUT + " should be transformed to the new default value.",
+                        ReverseProxyHandler.CONNECTION_IDLE_TIMEOUT.getDefaultValue().asInt(), transformed.asInt());
+            }
         }
     }
 
     private void testTransformers(ModelTestControllerVersion controllerVersion, ModelVersion undertowVersion) throws Exception {
-        //Boot up empty controllers with the resources needed for the ops coming from the xml to work
-        final String eapVersion;
-        switch (controllerVersion) {
-            case EAP_7_0_0:
-                eapVersion = "7.0";
-                break;
-            case EAP_7_1_0:
-                eapVersion = "7.1";
-                break;
-            default:
-                Assert.fail(controllerVersion + " not yet configured");
-                return;
-        }
-
-        testTransformers(controllerVersion, eapVersion, undertowVersion);
-    }
-
-    private void testTransformers(ModelTestControllerVersion controllerVersion, String eapVersion,  ModelVersion undertowVersion) throws Exception {
         KernelServicesBuilder builder = createKernelServicesBuilder(createAdditionalInitialization())
-                .setSubsystemXmlResource(String.format("undertow-%s-transformers.xml", eapVersion));
+                .setSubsystemXmlResource(String.format("undertow-%s-transformers.xml", controllerVersion.getRealVersionName()));
         LegacyKernelServicesInitializer init = builder.createLegacyKernelServicesBuilder(createAdditionalInitialization(), controllerVersion, undertowVersion)
                 .addMavenResourceURL(String.format("%s:wildfly-undertow:%s", controllerVersion.getMavenGroupId(), controllerVersion.getMavenGavVersion()))
                 .addSingleChildFirstClass(DefaultInitialization.class)
@@ -272,9 +304,15 @@ public class UndertowTransformersTestCase extends AbstractSubsystemTest {
         addExtraMavenUrls(controllerVersion, init);
 
         KernelServices mainServices = builder.build();
-        assertTrue(mainServices.isSuccessfulBoot());
-        assertTrue(mainServices.getLegacyServices(undertowVersion).isSuccessfulBoot());
-
+        if (!mainServices.isSuccessfulBoot()) {
+            final Throwable error = mainServices.getBootError();
+            throw new Exception("Unexpected main services boot error: " + error, error);
+        }
+        final KernelServices undertowLegacyServices = mainServices.getLegacyServices(undertowVersion);
+        if (!undertowLegacyServices.isSuccessfulBoot()) {
+            final Throwable error = undertowLegacyServices.getBootError();
+            throw new Exception("Unexpected Undertow legacy service boot error: " + error, error);
+        }
         checkSubsystemModelTransformation(mainServices, undertowVersion, null);
     }
 
@@ -288,7 +326,15 @@ public class UndertowTransformersTestCase extends AbstractSubsystemTest {
             init.addMavenResourceURL(controllerVersion.getMavenGroupId() + ":wildfly-web-common:" + controllerVersion.getMavenGavVersion());
             // Prevent service loader loading of io.undertow.predicate.PredicateBuilder or io.undertow.attribute.ExchangeAttributeBuilder
             // from the parent as the parent includes classes not available in the child
+            // (we can't add more than one exclude, as the second one overwrites the first one, this is why we need to use the wildcard here)
             init.excludeResourceFromParent("META-INF/services/io.undertow.*");
+        } else if (controllerVersion == ModelTestControllerVersion.EAP_7_3_0) {
+            init.addMavenResourceURL(controllerVersion.getMavenGroupId() + ":wildfly-clustering-common:" + controllerVersion.getMavenGavVersion());
+            init.addMavenResourceURL(controllerVersion.getMavenGroupId() + ":wildfly-web-common:" + controllerVersion.getMavenGavVersion());
+            init.addParentFirstClassPattern("org.jboss.msc.service.ServiceName");
+            init.addParentFirstClassPattern("org.jboss.as.clustering.controller.CapabilityServiceConfigurator");
+            init.addMavenResourceURL("io.undertow:undertow-servlet:2.0.33.Final");
+            init.excludeResourceFromParent("META-INF/services/io.undertow.predicate.PredicateBuilder");
         }
     }
 

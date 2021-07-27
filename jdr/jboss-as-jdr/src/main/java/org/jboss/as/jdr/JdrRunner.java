@@ -108,13 +108,14 @@ public class JdrRunner implements JdrReportCollector {
             }
             versionWriter.close();
             this.env.getZip().add(new ByteArrayInputStream(versionStream.toByteArray()), "version.txt");
+            this.env.getZip().add(new ByteArrayInputStream(this.env.getZip().getProductDirName().getBytes(StandardCharsets.UTF_8)), "product.txt");
 
         } catch (Exception e) {
             ROOT_LOGGER.error(ROOT_LOGGER.couldNotConfigureJDR(), e);
             throw new OperationFailedException(ROOT_LOGGER.couldNotConfigureJDR());
         }
 
-        if (commands.size() < 1) {
+        if (commands.isEmpty()) {
             ROOT_LOGGER.error(JdrLogger.ROOT_LOGGER.noCommandsToRun());
             throw new OperationFailedException(JdrLogger.ROOT_LOGGER.noCommandsToRun());
         }

@@ -24,12 +24,10 @@ package org.jboss.as.clustering.infinispan.subsystem.remote;
 
 import static org.jboss.as.clustering.infinispan.subsystem.remote.RemoteTransactionResourceDefinition.Attribute.*;
 
-import java.util.concurrent.TimeUnit;
-
 import org.infinispan.client.hotrod.configuration.ConfigurationBuilder;
 import org.infinispan.client.hotrod.configuration.TransactionConfiguration;
 import org.infinispan.client.hotrod.configuration.TransactionConfigurationBuilder;
-import org.infinispan.transaction.tm.EmbeddedTransactionManager;
+import org.infinispan.client.hotrod.transaction.manager.RemoteTransactionManager;
 import org.jboss.as.clustering.dmr.ModelNodes;
 import org.jboss.as.clustering.infinispan.TransactionManagerProvider;
 import org.jboss.as.clustering.infinispan.subsystem.ComponentServiceConfigurator;
@@ -45,9 +43,9 @@ import org.wildfly.transaction.client.ContextTransactionManager;
  * Configures the transaction component of a remote cache container.
  * @author Paul Ferraro
  */
+@Deprecated
 public class RemoteTransactionServiceConfigurator extends ComponentServiceConfigurator<TransactionConfiguration> {
 
-    private volatile long timeout;
     private volatile TransactionMode mode;
 
     RemoteTransactionServiceConfigurator(PathAddress address) {
@@ -56,14 +54,13 @@ public class RemoteTransactionServiceConfigurator extends ComponentServiceConfig
 
     @Override
     public ServiceConfigurator configure(OperationContext context, ModelNode model) throws OperationFailedException {
-        this.timeout = TIMEOUT.resolveModelAttribute(context, model).asLong();
         this.mode = ModelNodes.asEnum(MODE.resolveModelAttribute(context, model), TransactionMode.class);
         return this;
     }
 
     @Override
     public TransactionConfiguration get() {
-        TransactionConfigurationBuilder builder = new ConfigurationBuilder().transaction().timeout(this.timeout, TimeUnit.MILLISECONDS);
+        TransactionConfigurationBuilder builder = new ConfigurationBuilder().transaction();
         switch (this.mode) {
             case NONE: {
                 builder.transactionMode(org.infinispan.client.hotrod.configuration.TransactionMode.NONE);
@@ -71,7 +68,12 @@ public class RemoteTransactionServiceConfigurator extends ComponentServiceConfig
             }
             case BATCH: {
                 builder.transactionMode(org.infinispan.client.hotrod.configuration.TransactionMode.NON_DURABLE_XA);
-                builder.transactionManagerLookup(new TransactionManagerProvider(EmbeddedTransactionManager.getInstance()));
+                builder.transactionManagerLookup(new TransactionManagerProvider(RemoteTransactionManager.getInstance()));
+                break;
+            }
+            case NON_XA: {
+                builder.transactionMode(org.infinispan.client.hotrod.configuration.TransactionMode.NON_XA);
+                builder.transactionManagerLookup(new TransactionManagerProvider(ContextTransactionManager.getInstance()));
                 break;
             }
             case NON_DURABLE_XA: {

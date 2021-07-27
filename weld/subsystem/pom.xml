@@ -10,7 +10,7 @@
         Maintain separation between the artifact id and the version to help prevent
         merge conflicts between commits changing the GA and those changing the V.
         -->
-      <version>18.0.0.Beta1-SNAPSHOT</version>
+      <version>25.0.0.Beta1-SNAPSHOT</version>
    </parent>
 
    <artifactId>wildfly-weld</artifactId>
@@ -47,6 +47,18 @@
    <dependencies>
 
       <dependency>
+         <groupId>jakarta.inject</groupId>
+         <artifactId>jakarta.inject-api</artifactId>
+      </dependency>
+
+      <dependency>
+          <groupId>org.picketbox</groupId>
+          <artifactId>picketbox</artifactId>
+          <scope>provided</scope>
+          <optional>true</optional>
+      </dependency>
+
+      <dependency>
          <groupId>${project.groupId}</groupId>
          <artifactId>wildfly-ee</artifactId>
       </dependency>
@@ -64,16 +76,17 @@
       <dependency>
          <groupId>org.wildfly.core</groupId>
          <artifactId>wildfly-server</artifactId>
+         <exclusions>
+             <exclusion>
+                 <groupId>org.picketbox</groupId>
+                 <artifactId>picketbox</artifactId>
+             </exclusion>
+         </exclusions>
       </dependency>
 
       <dependency>
          <groupId>${project.groupId}</groupId>
          <artifactId>wildfly-web-common</artifactId>
-      </dependency>
-
-      <dependency>
-         <groupId>${project.groupId}</groupId>
-         <artifactId>wildfly-security</artifactId>
       </dependency>
 
       <dependency>

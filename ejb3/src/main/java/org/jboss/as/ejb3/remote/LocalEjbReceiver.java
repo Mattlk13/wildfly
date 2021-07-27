@@ -147,7 +147,7 @@ public class LocalEjbReceiver extends EJBReceiver {
                 // entire map of JBoss specific attachments
                 data.put(EJBClientInvocationContext.PRIVATE_ATTACHMENTS_KEY, privateAttachments);
             }
-            // Note: The code here is just for backward compatibility of 1.0.x version of EJB client project
+            // Note: The code here is just for backward compatibility of 1.0.x version of Jakarta Enterprise Beans client project
             // against AS7 7.1.x releases. Discussion here https://github.com/jbossas/jboss-ejb-client/pull/11#issuecomment-6573863
             final boolean txIdAttachmentPresent = privateAttachments.containsKey(AttachmentKeys.TRANSACTION_ID_KEY);
             if (txIdAttachmentPresent) {
@@ -175,10 +175,8 @@ public class LocalEjbReceiver extends EJBReceiver {
                 final boolean isAsync = view.isAsynchronous(method);
                 final boolean oneWay = isAsync && method.getReturnType() == void.class;
                 final boolean isSessionBean = view.getComponent() instanceof SessionBeanComponent;
-                if (isAsync && isSessionBean) {
-                    if (! oneWay) {
-                        interceptorContext.putPrivateData(CancellationFlag.class, flag);
-                    }
+                if (isAsync && isSessionBean && !oneWay) {
+                    interceptorContext.putPrivateData(CancellationFlag.class, flag);
                 }
                 final SecurityContext securityContext;
                 final SecurityDomain securityDomain;

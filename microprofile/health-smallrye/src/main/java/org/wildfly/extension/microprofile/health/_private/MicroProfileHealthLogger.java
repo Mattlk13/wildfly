@@ -24,6 +24,7 @@ package org.wildfly.extension.microprofile.health._private;
 
 import static org.jboss.logging.Logger.Level.INFO;
 
+import org.jboss.as.server.deployment.DeploymentUnitProcessingException;
 import org.jboss.logging.BasicLogger;
 import org.jboss.logging.Logger;
 import org.jboss.logging.annotations.LogMessage;
@@ -35,7 +36,7 @@ import org.jboss.logging.annotations.MessageLogger;
  *
  * @author <a href="http://jmesnil.net/">Jeff Mesnil</a> (c) 2018 Red Hat inc.
  */
-@MessageLogger(projectCode = "WFLYHEALTH", length = 4)
+@MessageLogger(projectCode = "WFLYMPHEALTH", length = 4)
 public interface MicroProfileHealthLogger extends BasicLogger {
     /**
      * A logger with the category {@code org.wildfly.extension.batch}.
@@ -46,9 +47,9 @@ public interface MicroProfileHealthLogger extends BasicLogger {
      * Logs an informational message indicating the naming subsystem is being activated.
      */
     @LogMessage(level = INFO)
-    @Message(id = 1, value = "Activating Eclipse MicroProfile Health Subsystem")
+    @Message(id = 1, value = "Activating MicroProfile Health Subsystem")
     void activatingSubsystem();
 
     @Message(id = 2, value = "Deployment %s requires use of the '%s' capability but it is not currently registered")
-    String deploymentRequiresCapability(String deploymentName, String capabilityName);
+    DeploymentUnitProcessingException deploymentRequiresCapability(String deploymentName, String capabilityName);
 }

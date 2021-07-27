@@ -80,7 +80,7 @@ import org.jboss.staxmapper.XMLElementReader;
 import org.jboss.staxmapper.XMLExtendedStreamReader;
 
 /**
- * Parser for persistent EJB timers that are stored in XML.
+ * Parser for persistent Jakarta Enterprise Beans timers that are stored in XML.
  *
  * @author Stuart Douglas
  */
@@ -178,12 +178,9 @@ public class EjbTimerXmlParser_1_0 implements XMLElementReader<List<TimerImpl>> 
     private Object deserialize(final String info) throws IOException, ClassNotFoundException {
 
         byte[] data = Base64.getDecoder().decode(info.trim());
-        Unmarshaller unmarshaller = factory.createUnmarshaller(configuration);
-        unmarshaller.start(new ByteBufferInput(ByteBuffer.wrap(data)));
-        try {
+        try (final Unmarshaller unmarshaller = factory.createUnmarshaller(configuration)) {
+            unmarshaller.start(new ByteBufferInput(ByteBuffer.wrap(data)));
             return unmarshaller.readObject();
-        } finally {
-            unmarshaller.close();
         }
     }
 

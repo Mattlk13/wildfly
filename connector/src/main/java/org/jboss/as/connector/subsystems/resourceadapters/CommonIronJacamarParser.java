@@ -254,7 +254,7 @@ public abstract class CommonIronJacamarParser extends AbstractParser {
                             break;
                         }
                         case TIMEOUT: {
-                            parseTimeOut(reader, isXa, connectionDefinitionNode);
+                            parseTimeOut(reader, connectionDefinitionNode);
                             break;
                         }
                         case VALIDATION: {
@@ -426,7 +426,7 @@ public abstract class CommonIronJacamarParser extends AbstractParser {
                             break;
                         }
                         case TIMEOUT: {
-                            parseTimeOut(reader, isXa, connectionDefinitionNode);
+                            parseTimeOut(reader, connectionDefinitionNode);
                             break;
                         }
                         case VALIDATION: {
@@ -610,7 +610,7 @@ public abstract class CommonIronJacamarParser extends AbstractParser {
                             break;
                         }
                         case TIMEOUT: {
-                            parseTimeOut(reader, isXa, connectionDefinitionNode);
+                            parseTimeOut(reader, connectionDefinitionNode);
                             break;
                         }
                         case VALIDATION: {
@@ -765,7 +765,7 @@ public abstract class CommonIronJacamarParser extends AbstractParser {
                                 break;
                             }
                             case TIMEOUT: {
-                                parseTimeOut(reader, isXa, connectionDefinitionNode);
+                                parseTimeOut(reader, connectionDefinitionNode);
                                 break;
                             }
                             case VALIDATION: {
@@ -859,7 +859,7 @@ public abstract class CommonIronJacamarParser extends AbstractParser {
         throw ParseUtils.unexpectedEndElement(reader);
     }
 
-    private void parseTimeOut(XMLExtendedStreamReader reader, Boolean isXa, ModelNode node) throws XMLStreamException,
+    private void parseTimeOut(XMLExtendedStreamReader reader, ModelNode node) throws XMLStreamException,
             ParserException, ValidateException {
 
         while (reader.hasNext()) {
@@ -1468,7 +1468,7 @@ public abstract class CommonIronJacamarParser extends AbstractParser {
                             break;
                         }
                         case CREDENTIAL_REFERENCE: {
-                            RECOVERY_CREDENTIAL_REFERENCE.getParser().parseAndSetParameter(RECOVERY_CREDENTIAL_REFERENCE, null, node, reader);
+                            RECOVERY_CREDENTIAL_REFERENCE.getParser().parseElement(RECOVERY_CREDENTIAL_REFERENCE, reader, node);
                         }
                         case SECURITY_DOMAIN: {
                             String value = rawElementText(reader);
@@ -1510,7 +1510,7 @@ public abstract class CommonIronJacamarParser extends AbstractParser {
                             break;
                         }
                         case CREDENTIAL_REFERENCE: {
-                            RECOVERY_CREDENTIAL_REFERENCE.getParser().parseAndSetParameter(RECOVERY_CREDENTIAL_REFERENCE, null, node, reader);
+                            RECOVERY_CREDENTIAL_REFERENCE.getParser().parseElement(RECOVERY_CREDENTIAL_REFERENCE, reader, node);
                             break;
                         }
                         case USER_NAME: {
